@@ -1,6 +1,6 @@
 export type UpdatePlanStatus = 'PLANNED' | 'APPLIED' | 'FAILED' | 'COMMITTED' | 'CANCELLED'
 export type PlanSummary = { planId: string; repositoryId?: string; taskId: string; name: string; status: UpdatePlanStatus; active: boolean; createdAt: string; updatedAt: string; itemCount: number; branchName?: string; baseCommitSha?: string }
-export type PlanItem = { itemId: string; updatePlanId: string; findingId: string; occurrenceId: string; targetProjectId: string; changePointTreeNodeId: string; targetArtifactVersionId: string; currentVersion?: string; targetVersion?: string; strategy: string; status: string; appliedFromVersion?: string; errorMessage?: string; selectedAt: string }
+export type PlanItem = { itemId: string; updatePlanId: string; findingId: string; occurrenceId: string; projectName?: string; targetProjectId: string; changePointTreeNodeId: string; targetArtifactVersionId: string; groupId?: string; artifactId?: string; currentVersion?: string; targetVersion?: string; strategy: string; status: string; appliedFromVersion?: string; errorMessage?: string; selectedAt: string }
 export type PlanDetails = { plan: PlanSummary; items: PlanItem[]; warnings: string[] }
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {

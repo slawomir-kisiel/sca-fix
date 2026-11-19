@@ -19,6 +19,8 @@ import pl.sca.fix.artifact.persistence.ArtifactVersionRepository;
 import pl.sca.fix.artifact.persistence.VersionRuleRepository;
 import pl.sca.fix.dependency.persistence.ArtifactTreeNodeRepository;
 import pl.sca.fix.integration.maven.MavenMetadataClient;
+import pl.sca.fix.integration.maven.MavenMetadataClient.ProxySettings;
+import pl.sca.fix.integration.maven.MavenProjectRepositoryResolver;
 import pl.sca.fix.integration.maven.MavenVersionLookup;
 import pl.sca.fix.integration.maven.MavenVersionComparator;
 import pl.sca.fix.project.persistence.ProjectRepository;
@@ -43,32 +45,47 @@ public class TargetVersionService {
     private final RepositoryRepository repositories;
     private final ArtifactTreeNodeRepository nodes;
     private final ArtifactVersionWriteCoordinator versionWrites;
+    private final MavenProjectRepositoryResolver projectRepositories;
 
     public TargetVersionService(VulnerabilityFindingRepository findings, DependencyTreeOccurrenceRepository occurrences,
                                 ArtifactRepository artifacts,
                                 ArtifactVersionRepository versions, VersionRuleRepository rules,
                                 MavenMetadataClient mavenMetadataClient,
                                 ProjectRepository projects, RepositoryRepository repositories, ArtifactTreeNodeRepository nodes,
-                                ArtifactVersionWriteCoordinator versionWrites) {
+                                ArtifactVersionWriteCoordinator versionWrites,
+                                MavenProjectRepositoryResolver projectRepositories) {
         this.findings = findings; this.occurrences = occurrences;
         this.artifacts = artifacts; this.versions = versions; this.rules = rules;
         this.mavenMetadataClient = mavenMetadataClient;
         this.projects = projects; this.repositories = repositories; this.nodes = nodes; this.versionWrites = versionWrites;
+        this.projectRepositories = projectRepositories;
     }
 
     @Transactional
     public TargetVersionsDto list(UUID findingId, UUID occurrenceId) {
         var occurrence = occurrence(findingId, occurrenceId);
-        return list(findingId, occurrenceId, nodeVersionId(occurrence), null);
+        return list(findingId, occurrenceId, nodeVersionId(occurrence), null, null);
+    }
+
+    @Transactional
+    public TargetVersionsDto list(UUID findingId, UUID occurrenceId, ProxySettings proxySettings) {
+        var occurrence = occurrence(findingId, occurrenceId);
+        return list(findingId, occurrenceId, nodeVersionId(occurrence), null, proxySettings);
     }
 
     @Transactional
     public TargetVersionsDto list(UUID findingId, UUID occurrenceId, UUID changePointArtifactVersionId) {
-        return list(findingId, occurrenceId, changePointArtifactVersionId, null);
+        return list(findingId, occurrenceId, changePointArtifactVersionId, null, null);
     }
 
     @Transactional
     public TargetVersionsDto list(UUID findingId, UUID occurrenceId, UUID changePointArtifactVersionId, String requestedVersion) {
+        return list(findingId, occurrenceId, changePointArtifactVersionId, requestedVersion, null);
+    }
+
+    @Transactional
+    public TargetVersionsDto list(UUID findingId, UUID occurrenceId, UUID changePointArtifactVersionId,
+                                  String requestedVersion, ProxySettings proxySettings) {
         var finding = finding(findingId);
         var occurrence = occurrence(findingId, occurrenceId);
         var changePoint = versions.findById(changePointArtifactVersionId)
@@ -87,7 +104,8 @@ public class TargetVersionService {
                 .map(item -> option(item.getId(), item.getVersion(), changePointArtifactVersionId, rule, "LOCAL_GRAPH", null,
                         artifact.getGroupId(), artifact.getArtifactId()))
                 .forEach(item -> candidates.put(item.version(), item));
-        MavenVersionLookup remote = mavenMetadataClient.findVersions(artifact.getGroupId(), artifact.getArtifactId());
+        MavenVersionLookup remote = mavenMetadataClient.findVersions(artifact.getGroupId(), artifact.getArtifactId(), proxySettings,
+                projectRepositories.resolve(project));
         remote.versions().forEach(item -> candidates.putIfAbsent(item.version(),
                 option(persistCandidateVersion(artifact.getId(), item.version()), item.version(), changePointArtifactVersionId, rule,
                         "MAVEN_REPOSITORY", item.repositoryId(), artifact.getGroupId(), artifact.getArtifactId())));

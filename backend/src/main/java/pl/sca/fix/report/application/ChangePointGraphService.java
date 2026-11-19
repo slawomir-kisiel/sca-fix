@@ -29,10 +29,13 @@ public class ChangePointGraphService {
     private final ArtifactVersionRepository versions;
     private final ArtifactRepository artifacts;
     private final ProjectRepository projects;
+    private final MavenVersionDefinitionLocator definitionLocator;
 
     public ChangePointGraphService(DependencyTreeOccurrenceRepository occurrences, ArtifactTreeNodeRepository nodes,
-                                   ArtifactVersionRepository versions, ArtifactRepository artifacts, ProjectRepository projects) {
+                                   ArtifactVersionRepository versions, ArtifactRepository artifacts, ProjectRepository projects,
+                                   MavenVersionDefinitionLocator definitionLocator) {
         this.occurrences = occurrences; this.nodes = nodes; this.versions = versions; this.artifacts = artifacts; this.projects = projects;
+        this.definitionLocator = definitionLocator;
     }
 
     @Transactional(readOnly = true)
@@ -73,13 +76,28 @@ public class ChangePointGraphService {
                     .ifPresent(projectId -> projectIds.add(projectId));
         }
         List<Project> candidates = projectIds.stream().map(projects::findById).flatMap(java.util.Optional::stream).toList();
-        ProjectRecommendation recommendation = recommendProject(path, candidates);
+        ProjectRecommendation recommendation = recommendProject(occurrence, path, candidates);
         return candidates.stream().map(project -> new TargetProjectDto(project.getId(), project.getName(), project.getGroupId(),
                 project.getArtifactId(), project.getVersion(), project.getPomPath(), project.getId().equals(occurrence.getProjectId()),
                 project.getId().equals(recommendation.projectId()), recommendation.available())).toList();
     }
 
-    private ProjectRecommendation recommendProject(List<ArtifactTreeNode> path, List<Project> candidates) {
+    private ProjectRecommendation recommendProject(DependencyTreeOccurrence occurrence,
+                                                   List<ArtifactTreeNode> path,
+                                                   List<Project> candidates) {
+        Artifact vulnerableArtifact = path.isEmpty() ? null : versions.findById(path.get(path.size() - 1).getArtifactVersionId())
+                .flatMap(version -> artifacts.findById(version.getArtifactId())).orElse(null);
+        Project occurrenceProject = projects.findById(occurrence.getProjectId()).orElse(null);
+        if (vulnerableArtifact != null && occurrenceProject != null) {
+            try {
+                Project definitionProject = definitionLocator.resolve(occurrenceProject,
+                        vulnerableArtifact.getGroupId(), vulnerableArtifact.getArtifactId()).sourceProject();
+                if (definitionProject != null && candidates.stream().anyMatch(project -> project.getId().equals(definitionProject.getId())))
+                    return new ProjectRecommendation(definitionProject.getId(), true);
+            } catch (RuntimeException ignored) {
+                // Fall back to the path-based recommendation when effective-pom cannot be read.
+            }
+        }
         for (int index = path.size() - 1; index >= 0; index--) {
             UUID projectId = projectId(path.get(index));
             if (projectId != null && candidates.stream().anyMatch(project -> projectId.equals(project.getId())))

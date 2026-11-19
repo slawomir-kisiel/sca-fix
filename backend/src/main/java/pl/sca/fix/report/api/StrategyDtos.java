@@ -22,6 +22,7 @@ public final class StrategyDtos {
                                      List<StrategyOptionDto> options, StrategyImpactDto impact,
                                      UpdateStrategy selectedStrategy,
                                      UpdateStrategy recommendedStrategy,
-                                     VersionDefinitionDto versionDefinition) { }
+                                     VersionDefinitionDto versionDefinition,
+                                     UUID definitionProjectId) { }
 
 }

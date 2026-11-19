@@ -15,8 +15,10 @@ public final class UpdatePlanDtos {
                                  boolean active, Instant createdAt, Instant updatedAt, long itemCount,
                                  String branchName, String baseCommitSha) { }
     public record PlanItemDto(UUID itemId, UUID updatePlanId, UUID findingId, UUID occurrenceId,
+                              String projectName,
                               UUID targetProjectId, UUID changePointTreeNodeId,
-                              UUID targetArtifactVersionId, String currentVersion,
+                              UUID targetArtifactVersionId, String groupId, String artifactId,
+                              String currentVersion,
                               String targetVersion, UpdateStrategy strategy,
                               PlanItemStatus status, String appliedFromVersion, String errorMessage, Instant selectedAt) { }
     public record PlanDetailsDto(PlanSummaryDto plan, List<PlanItemDto> items,

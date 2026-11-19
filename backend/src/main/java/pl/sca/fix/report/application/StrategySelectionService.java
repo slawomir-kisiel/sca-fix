@@ -75,14 +75,16 @@ public class StrategySelectionService {
                 .orElseThrow(() -> notFound("Change point artifact not found"));
         Project project = projects.findById(targetProjectId)
                 .orElseThrow(() -> notFound("Project not found"));
-        VersionDefinitionDto definition = definitionLocator.locate(project,
+        var resolution = definitionLocator.resolve(project,
                 changePointArtifact.getGroupId(), changePointArtifact.getArtifactId());
-        boolean localProperty = definition.propertyName() != null && definition.sourcePomPath() != null
-                && (project.getGroupId() + ":" + project.getArtifactId()).equals(definition.sourceProject());
+        VersionDefinitionDto definition = resolution.definition();
+        Project definitionProject = resolution.sourceProject();
+        boolean registeredDefinition = definitionProject != null;
+        boolean localProperty = registeredDefinition && definition.propertyName() != null;
         PomCapabilities pom = new PomCapabilities(
                 localProperty,
-                "dependencyManagement".equals(definition.section()));
-        boolean directDefinition = direct && !localProperty;
+                registeredDefinition && "dependencyManagement".equals(definition.section()));
+        boolean directDefinition = registeredDefinition && "dependencies".equals(definition.section());
         List<StrategyOptionDto> options = List.of(
                 option(UpdateStrategy.PROPERTY, "Zmiana property", pom.property(), "VERSION_PROPERTY_NOT_FOUND"),
                 option(UpdateStrategy.DIRECT_DEPENDENCY, "Aktualizacja bezpośredniej zależności", directDefinition,
@@ -99,7 +101,8 @@ public class StrategySelectionService {
                 : pom.dependencyManagement() ? UpdateStrategy.DEPENDENCY_MANAGEMENT : UpdateStrategy.CVE_OVERRIDE;
         String warning = total > 1 ? "Wybór może wpłynąć na " + (total - 1) + " innych wystąpień tego findingu." : null;
         return new StrategyOptionsDto(findingId, occurrenceId, targetArtifactVersionId, options,
-                new StrategyImpactDto(total, Math.max(0, total - 1), warning), selected, recommended, definition);
+                new StrategyImpactDto(total, Math.max(0, total - 1), warning), selected, recommended, definition,
+                definitionProject == null ? project.getId() : definitionProject.getId());
     }
 
     @Transactional(readOnly = true)

@@ -42,6 +42,43 @@ class ReportAdaptersTest {
     }
 
     @Test
+    void mapsCheckmarxImprovedProjectReportToCanonicalFindings() throws Exception {
+        var document = mapper.readTree("""
+                {
+                  "reportCreationDate":"2026-11-18T06:40:38.55280672+01:00",
+                  "reportType":"Improved Project Report",
+                  "projectsOverview":{"projectsList":[{"projectName":"P00972-iwa-kafka","projectBranchesOverview":[{"lastScan":"2026-11-15T22:01:12.139Z"}]}]},
+                  "byScanner":{"scannersDistribution":[{"scannerName":"SCA","numberOfResults":1}]},
+                  "topVulnerabilitiesList":{"vulnerabilitiesList":[{
+                    "vulnerabilityType":"org.apache.kafka:kafka-clients:4.2.1 | CVE-2026-11095",
+                    "total":2,
+                    "vulnerabilitySeverities":[{"level":"Critical","value":5}]
+                  }]}
+                }
+                """);
+
+        var adapter = new CheckmarxJsonAdapter();
+        var result = adapter.parse(document);
+
+        assertThat(adapter.supports(document)).isTrue();
+        assertThat(result.source()).isEqualTo("CHECKMARX");
+        assertThat(result.formatVersion()).isEqualTo("Improved Project Report");
+        assertThat(result.metadata()).isNotNull();
+        assertThat(result.metadata().projectName()).isEqualTo("P00972-iwa-kafka");
+        assertThat(result.metadata().engineVersion()).isEqualTo("SCA");
+        assertThat(result.findings()).singleElement().satisfies(finding -> {
+            assertThat(finding.cve()).isEqualTo("CVE-2026-11095");
+            assertThat(finding.identifierType()).isEqualTo("CVE");
+            assertThat(finding.severity()).isEqualTo("Critical");
+            assertThat(finding.affectedArtifacts()).singleElement().satisfies(artifact -> {
+                assertThat(artifact.groupId()).isEqualTo("org.apache.kafka");
+                assertThat(artifact.artifactId()).isEqualTo("kafka-clients");
+                assertThat(artifact.version()).isEqualTo("4.2.1");
+            });
+        });
+    }
+
+    @Test
     void doesNotTreatOwaspAdvisoryTextAsCve() throws Exception {
         var document = mapper.readTree("""
                 {"reportSchema":"1.1","scanInfo":{},"projectInfo":{},"dependencies":[{"vulnerabilities":[{"name":"Versions of Quill prior to 1.3.7 are vulnerable to Reverse Tabnabbing. The package should be upgraded."}]}]}

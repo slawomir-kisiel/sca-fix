@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import pl.sca.fix.artifact.persistence.ArtifactVersionRepository;
+import pl.sca.fix.artifact.persistence.ArtifactRepository;
 import pl.sca.fix.dependency.persistence.ArtifactTreeNodeRepository;
 import pl.sca.fix.report.api.UpdatePlanDtos.CreatePlanRequest;
 import pl.sca.fix.report.api.UpdatePlanDtos.PlanDetailsDto;
@@ -18,6 +19,8 @@ import pl.sca.fix.report.domain.UpdatePlan;
 import pl.sca.fix.report.domain.UpdatePlanStatus;
 import pl.sca.fix.report.persistence.PlanItemRepository;
 import pl.sca.fix.report.persistence.UpdatePlanRepository;
+import pl.sca.fix.report.persistence.DependencyTreeOccurrenceRepository;
+import pl.sca.fix.project.persistence.ProjectRepository;
 import pl.sca.fix.repository.persistence.RepositoryRepository;
 
 @Service
@@ -26,12 +29,18 @@ public class UpdatePlanService {
     private final PlanItemRepository items;
     private final ArtifactTreeNodeRepository nodes;
     private final ArtifactVersionRepository versions;
+    private final ArtifactRepository artifacts;
+    private final DependencyTreeOccurrenceRepository occurrences;
+    private final ProjectRepository projects;
     private final RepositoryRepository repositories;
 
     public UpdatePlanService(UpdatePlanRepository plans, PlanItemRepository items,
                              ArtifactTreeNodeRepository nodes, ArtifactVersionRepository versions,
-                             RepositoryRepository repositories) {
-        this.plans = plans; this.items = items; this.nodes = nodes; this.versions = versions; this.repositories = repositories;
+                             ArtifactRepository artifacts, DependencyTreeOccurrenceRepository occurrences,
+                             ProjectRepository projects, RepositoryRepository repositories) {
+        this.plans = plans; this.items = items; this.nodes = nodes; this.versions = versions;
+        this.artifacts = artifacts; this.occurrences = occurrences; this.projects = projects;
+        this.repositories = repositories;
     }
 
     @Transactional(readOnly = true)
@@ -114,9 +123,19 @@ public class UpdatePlanService {
     private UpdatePlan plan(UUID id) { return plans.findById(id).orElseThrow(() -> notFound("Update plan not found")); }
     private PlanSummaryDto summary(UpdatePlan plan) { return new PlanSummaryDto(plan.getId(), plan.getRepositoryId(), plan.getTaskId(), plan.getName(), plan.getStatus(), plan.isActive(), plan.getCreatedAt(), plan.getUpdatedAt(), items.countByUpdatePlanId(plan.getId()), plan.getBranchName(), plan.getBaseCommitSha()); }
     private PlanItemDto item(PlanItem item) {
-        String current = nodes.findById(item.getChangePointTreeNodeId()).flatMap(node -> versions.findById(node.getArtifactVersionId())).map(v -> v.getVersion()).orElse(null);
+        var currentVersion = nodes.findById(item.getChangePointTreeNodeId())
+                .flatMap(node -> versions.findById(node.getArtifactVersionId())).orElse(null);
+        var artifact = currentVersion == null
+                ? versions.findById(item.getTargetArtifactVersionId()).flatMap(version -> artifacts.findById(version.getArtifactId())).orElse(null)
+                : artifacts.findById(currentVersion.getArtifactId()).orElse(null);
+        String current = currentVersion == null ? null : currentVersion.getVersion();
         String target = versions.findById(item.getTargetArtifactVersionId()).map(v -> v.getVersion()).orElse(null);
-        return new PlanItemDto(item.getId(), item.getUpdatePlanId(), item.getFindingId(), item.getOccurrenceId(), item.getTargetProjectId(), item.getChangePointTreeNodeId(), item.getTargetArtifactVersionId(), current, target, item.getStrategy(), item.getStatus(), item.getAppliedFromVersion(), item.getErrorMessage(), item.getSelectedAt());
+        String projectName = occurrences.findById(item.getOccurrenceId())
+                .flatMap(occurrence -> projects.findById(occurrence.getProjectId()))
+                .map(project -> project.getName()).orElse(null);
+        return new PlanItemDto(item.getId(), item.getUpdatePlanId(), item.getFindingId(), item.getOccurrenceId(), projectName, item.getTargetProjectId(), item.getChangePointTreeNodeId(), item.getTargetArtifactVersionId(),
+                artifact == null ? null : artifact.getGroupId(), artifact == null ? null : artifact.getArtifactId(), current, target,
+                item.getStrategy(), item.getStatus(), item.getAppliedFromVersion(), item.getErrorMessage(), item.getSelectedAt());
     }
     private List<String> warnings(List<PlanItemDto> items) { return items.stream().filter(item -> item.currentVersion() == null || item.targetVersion() == null).map(item -> "Nie można odtworzyć wersji dla PlanItem " + item.itemId()).toList(); }
     private ResponseStatusException notFound(String message) { return new ResponseStatusException(HttpStatus.NOT_FOUND, message); }

@@ -163,7 +163,8 @@ public class PlanPreparationService {
                                     .filter(item -> item.strategy() != UpdateStrategy.DEFER && item.strategy() != UpdateStrategy.REJECT)
                                     .sorted(Comparator.comparing(item -> item.strategy() == strategyOptions.recommendedStrategy() ? 0 : 1))
                                     .findFirst().orElse(null);
-                            if (option != null) return new Decision(finding.getId(), occurrence.getId(), project.projectId(), node.treeNodeId(), targetId, option.strategy());
+                            if (option != null) return new Decision(finding.getId(), occurrence.getId(),
+                                    strategyOptions.definitionProjectId(), node.treeNodeId(), targetId, option.strategy());
                         }
                     } catch (RuntimeException ignored) { }
                 }

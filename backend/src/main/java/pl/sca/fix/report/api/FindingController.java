@@ -36,6 +36,7 @@ import pl.sca.fix.report.persistence.PlanItemRepository;
 import pl.sca.fix.report.persistence.UpdatePlanRepository;
 import pl.sca.fix.report.application.PlanPreparationService;
 import pl.sca.fix.report.api.PlanPreparationDtos.PreparationRunDto;
+import pl.sca.fix.integration.maven.MavenMetadataClient.ProxySettings;
 
 @RestController
 @RequestMapping("/api")
@@ -215,10 +216,20 @@ public class FindingController {
     @GetMapping("/findings/{findingId}/target-versions")
       public TargetVersionsDto targetVersions(@PathVariable UUID findingId, @RequestParam UUID occurrenceId,
                                               @RequestParam(required = false) UUID changePointArtifactVersionId,
-                                              @RequestParam(required = false) String version) {
+                                              @RequestParam(required = false) String version,
+                                              @RequestParam(required = false) String proxyHost,
+                                              @RequestParam(required = false) Integer proxyPort,
+                                              @RequestParam(required = false) String proxyUsername,
+                                              @RequestParam(required = false) String proxyPassword) {
+        ProxySettings proxySettings;
+        try {
+            proxySettings = ProxySettings.from(proxyHost, proxyPort, proxyUsername, proxyPassword);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage());
+        }
         return changePointArtifactVersionId == null
-                ? targetVersionService.list(findingId, occurrenceId)
-                  : targetVersionService.list(findingId, occurrenceId, changePointArtifactVersionId, version);
+                ? targetVersionService.list(findingId, occurrenceId, proxySettings)
+                : targetVersionService.list(findingId, occurrenceId, changePointArtifactVersionId, version, proxySettings);
     }
 
     private FindingListItemDto listItem(VulnerabilityFinding finding) {

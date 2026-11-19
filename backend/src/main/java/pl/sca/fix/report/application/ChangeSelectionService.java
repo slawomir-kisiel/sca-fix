@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import pl.sca.fix.artifact.persistence.ArtifactVersionRepository;
+import pl.sca.fix.artifact.persistence.ArtifactRepository;
 import pl.sca.fix.dependency.persistence.ArtifactTreeNodeRepository;
 import pl.sca.fix.project.persistence.ProjectRepository;
 import pl.sca.fix.report.api.ChangePointGraphDtos.ChangeSelectionDto;
@@ -24,16 +25,18 @@ public class ChangeSelectionService {
     private final DependencyTreeOccurrenceRepository occurrences;
     private final ProjectRepository projects;
     private final ArtifactVersionRepository versions;
+    private final ArtifactRepository artifacts;
     private final ArtifactTreeNodeRepository nodes;
     private final PlanItemRepository selections;
     private final UpdatePlanRepository plans;
 
     public ChangeSelectionService(VulnerabilityFindingRepository findings, DependencyTreeOccurrenceRepository occurrences,
                                   ProjectRepository projects, ArtifactVersionRepository versions,
+                                  ArtifactRepository artifacts,
                                   ArtifactTreeNodeRepository nodes, PlanItemRepository selections,
                                   UpdatePlanRepository plans) {
         this.findings = findings; this.occurrences = occurrences; this.projects = projects;
-        this.versions = versions; this.nodes = nodes; this.selections = selections; this.plans = plans;
+        this.versions = versions; this.artifacts = artifacts; this.nodes = nodes; this.selections = selections; this.plans = plans;
     }
 
     @Transactional
@@ -49,7 +52,10 @@ public class ChangeSelectionService {
         var occurrence = occurrences.findById(request.occurrenceId()).orElseThrow(() -> notFound("Occurrence not found"));
         if (!findingId.equals(occurrence.getFindingId())) throw badRequest("Occurrence does not belong to finding");
         var node = nodes.findById(request.changePointTreeNodeId()).orElseThrow(() -> notFound("Change point tree node not found"));
-        if (!occurrence.getProjectId().equals(node.getProjectId())) throw badRequest("Change point does not belong to occurrence tree");
+        if (!isOnOccurrencePath(occurrence.getVulnerableArtifactTreeNodeId(), node.getId()))
+            throw badRequest("Change point does not belong to occurrence tree");
+        if (!isProjectOnOccurrencePath(occurrence.getVulnerableArtifactTreeNodeId(), targetProject.getId()))
+            throw badRequest("Target project does not belong to occurrence tree");
         var changePointVersion = versions.findById(node.getArtifactVersionId())
                 .orElseThrow(() -> notFound("Change point artifact version not found"));
         var targetVersion = versions.findById(request.targetArtifactVersionId())
@@ -68,4 +74,27 @@ public class ChangeSelectionService {
 
     private ResponseStatusException notFound(String message) { return new ResponseStatusException(HttpStatus.NOT_FOUND, message); }
     private ResponseStatusException badRequest(String message) { return new ResponseStatusException(HttpStatus.BAD_REQUEST, message); }
+
+    private boolean isOnOccurrencePath(UUID vulnerableNodeId, UUID candidateNodeId) {
+        UUID current = vulnerableNodeId;
+        while (current != null) {
+            if (current.equals(candidateNodeId)) return true;
+            current = nodes.findById(current).map(node -> node.getPreviousNodeId()).orElse(null);
+        }
+        return false;
+    }
+
+    private boolean isProjectOnOccurrencePath(UUID vulnerableNodeId, UUID projectId) {
+        UUID current = vulnerableNodeId;
+        while (current != null) {
+            var node = nodes.findById(current).orElse(null);
+            if (node == null) return false;
+            var project = versions.findById(node.getArtifactVersionId())
+                    .flatMap(version -> artifacts.findById(version.getArtifactId()))
+                    .map(artifact -> artifact.getProjectId()).orElse(null);
+            if (projectId.equals(project)) return true;
+            current = node.getPreviousNodeId();
+        }
+        return false;
+    }
 }
