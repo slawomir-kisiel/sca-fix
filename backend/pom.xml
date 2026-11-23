@@ -5,15 +5,22 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>pl.sca</groupId>
-        <artifactId>sca-fix-tool</artifactId>
-        <version>0.1.0-SNAPSHOT</version>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.5.7</version>
+        <relativePath />
     </parent>
 
     <artifactId>sca-fix-backend</artifactId>
     <name>sca-fix-tool backend</name>
+    <version>0.1.0-SNAPSHOT</version>
 
     <dependencies>
+        <dependency>
+            <groupId>pl.sca</groupId>
+            <artifactId>sca-fix-core</artifactId>
+            <version>${project.version}</version>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>

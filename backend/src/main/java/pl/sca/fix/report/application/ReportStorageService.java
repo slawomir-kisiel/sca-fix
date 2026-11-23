@@ -91,6 +91,22 @@ public class ReportStorageService {
         }
     }
 
+    @Transactional
+    public ReportImportResponseDto store(Path source, UUID repositoryId, String originalFilename, String contentType) {
+        if (source == null || !Files.isRegularFile(source)) throw new IllegalArgumentException("Report file must exist");
+        try {
+            UUID id = UUID.randomUUID();
+            Files.createDirectories(reportsDirectory);
+            Path reportPath = reportsDirectory.resolve(id + ".json");
+            Files.copy(source, reportPath, StandardCopyOption.REPLACE_EXISTING);
+            return storeFile(reportPath, id, repositoryId,
+                    originalFilename == null ? source.getFileName().toString() : originalFilename,
+                    contentType == null ? "application/json" : contentType);
+        } catch (IOException exception) {
+            throw new IllegalArgumentException("Unable to copy report file", exception);
+        }
+    }
+
     @Transactional(readOnly = true)
     public SecurityScanReportMetadataDto metadata(UUID reportId) { return metadata(reports.findById(reportId).orElseThrow(() -> new ReportNotFoundException(reportId))); }
 
@@ -110,6 +126,43 @@ public class ReportStorageService {
 
     private Path reportPath(UUID reportId) {
         return reportsDirectory.resolve(reportId + ".json");
+    }
+
+    private ReportImportResponseDto storeFile(Path reportPath, UUID id, UUID repositoryId,
+                                               String originalFilename, String contentType) {
+        try {
+            long sizeBytes = Files.size(reportPath);
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            try (InputStream input = Files.newInputStream(reportPath)) {
+                byte[] buffer = new byte[8192];
+                while (input.read(buffer) != -1) digest.update(buffer);
+            }
+            String sha256 = HexFormat.of().formatHex(digest.digest());
+            var detection = detectOrKeepRaw(reportPath);
+            SecurityScanReport report = new SecurityScanReport(id, repositoryId, originalFilename, contentType,
+                    sizeBytes, sha256, Instant.now(), detection.source(), detection.format(), detection.formatVersion());
+            try {
+                reports.save(report);
+                if (detection.canonicalReport() == null) {
+                    report.setStatus(ReportStatus.REQUIRES_REGISTRATION);
+                } else {
+                    report.setStatus(ReportStatus.IN_PROGRESS);
+                    detection.canonicalReport().findings().stream()
+                            .map(item -> new pl.sca.fix.report.domain.VulnerabilityFinding(id, item))
+                            .forEach(findings::save);
+                    report.setStatus(ReportStatus.READY);
+                }
+                reports.save(report);
+            } catch (RuntimeException exception) {
+                Files.deleteIfExists(reportPath);
+                throw exception;
+            }
+            log.info("Stored generated security scan report metadata and file reportId={} repositoryId={} filename={} sizeBytes={} sha256={} path={}",
+                    id, repositoryId, originalFilename, sizeBytes, sha256, reportPath);
+            return new ReportImportResponseDto(id, report.getStatus().name(), report.getSource(), report.getFormat(), report.getFormatVersion(), null);
+        } catch (IOException | NoSuchAlgorithmException exception) {
+            throw new IllegalArgumentException("Unable to read generated report file", exception);
+        }
     }
 
     private pl.sca.fix.report.integration.ReportDetectionResult detectOrKeepRaw(Path reportPath) {

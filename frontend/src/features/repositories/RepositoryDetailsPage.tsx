@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { getRepository, RepositoryDetails, ReportSummary } from './api'
+import { getJob } from '../../api/client'
+import { getRepository, RepositoryDetails, ReportSummary, getOwaspScanPlan, OwaspScanPlan, startOwaspScan } from './api'
 import { getProjects, ProjectSummary, runBatchMavenAnalysis } from '../projects/api'
 
 const tabs = [['overview', 'Overview'], ['branches', 'Branches'], ['projects', 'Projects'], ['reports', 'Reports'], ['graph', 'Dependency graph'], ['plans', 'Plans'], ['history', 'History']] as const
@@ -29,6 +30,11 @@ export function RepositoryDetailsPage({ repositoryId }: { repositoryId: string }
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [running, setRunning] = useState(false)
   const [analysisError, setAnalysisError] = useState('')
+  const [owaspPlan, setOwaspPlan] = useState<OwaspScanPlan>()
+  const [owaspSelected, setOwaspSelected] = useState<Set<string>>(new Set())
+  const [owaspLoading, setOwaspLoading] = useState(false)
+  const [owaspJobs, setOwaspJobs] = useState<Array<{ jobId: string; pomPath: string; status: string }>>([])
+  const [owaspError, setOwaspError] = useState('')
 
   useEffect(() => { getRepository(repositoryId).then(setDetails).catch(() => setError(true)) }, [repositoryId])
 
@@ -43,6 +49,18 @@ export function RepositoryDetailsPage({ repositoryId }: { repositoryId: string }
     load()
     return () => { cancelled = true; if (timer) window.clearTimeout(timer) }
   }, [repositoryId])
+
+  useEffect(() => {
+    if (!owaspJobs.some(job => job.status === 'QUEUED' || job.status === 'RUNNING')) return
+    let cancelled = false
+    const refresh = () => Promise.all(owaspJobs.map(async job => {
+      try { const current = await getJob(job.jobId); return { ...job, status: current.status } }
+      catch { return job }
+    })).then(updated => { if (!cancelled) setOwaspJobs(updated) })
+    const timer = window.setInterval(refresh, 5000)
+    refresh()
+    return () => { cancelled = true; window.clearInterval(timer) }
+  }, [owaspJobs])
 
   const visibleProjects = useMemo(() => {
     const query = filter.trim().toLocaleLowerCase()
@@ -76,6 +94,19 @@ export function RepositoryDetailsPage({ repositoryId }: { repositoryId: string }
     catch { setAnalysisError('Nie udało się uruchomić analizy Maven.') }
     finally { setRunning(false) }
   }
+  async function prepareOwaspScan() {
+    setOwaspLoading(true); setOwaspError('')
+    try { const plan = await getOwaspScanPlan(repositoryId); setOwaspPlan(plan); setOwaspSelected(new Set(plan.scopes.map(scope => scope.scopeId))) }
+    catch { setOwaspError('Nie udało się przygotować zakresu skanowania OWASP.') }
+    finally { setOwaspLoading(false) }
+  }
+  async function runOwaspScan() {
+    if (!owaspPlan) return
+    setOwaspLoading(true); setOwaspError('')
+    try { const result = await startOwaspScan(repositoryId, [...owaspSelected]); setOwaspJobs(result.jobs); setOwaspPlan(undefined) }
+    catch { setOwaspError('Nie udało się uruchomić skanowania OWASP.') }
+    finally { setOwaspLoading(false) }
+  }
 
   return <div className="page">
     <a className="back-link" href="#repositories">← Repositories</a>
@@ -89,5 +120,6 @@ export function RepositoryDetailsPage({ repositoryId }: { repositoryId: string }
     {tab === 'history' && <div className="state-card">Brak zapisanej historii operacji.</div>}
     {collection.length === 0 && !['overview', 'graph', 'history', 'projects', 'reports'].includes(tab) && <div className="state-card">Brak danych w tej zakładce.</div>}
     {collection.length > 0 && !['reports'].includes(tab) && <pre className="json-preview">{JSON.stringify(collection, null, 2)}</pre>}
+    {tab === 'reports' && <div className="state-card"><div className="section-heading"><h2>OWASP Dependency-Check</h2><button className="button primary" onClick={prepareOwaspScan} disabled={owaspLoading}>{owaspLoading ? 'Przygotowywanie...' : 'Przygotuj skanowanie'}</button></div>{owaspError && <p>{owaspError}</p>}{owaspPlan && <div><strong>Zakresy · plugin {owaspPlan.pluginVersion}</strong>{owaspPlan.scopes.map(scope => <label className="project-row" key={scope.scopeId}><input type="checkbox" checked={owaspSelected.has(scope.scopeId)} onChange={event => setOwaspSelected(current => { const next = new Set(current); event.target.checked ? next.add(scope.scopeId) : next.delete(scope.scopeId); return next })} /><span><strong>{scope.projectName}</strong><small>{scope.pomPath}</small><small>{scope.groupId}:{scope.artifactId}:{scope.version}</small></span><span>{scope.coveredProjectIds.length} projektów</span></label>)}<button className="button primary" disabled={!owaspSelected.size || owaspLoading} onClick={runOwaspScan}>Uruchom skanowanie ({owaspSelected.size})</button></div>}{owaspJobs.length > 0 && <div><strong>Joby</strong>{owaspJobs.map(job => <div key={job.jobId}><a className="list-link" href={`#jobs/${job.jobId}?return=repository/${repositoryId}`}>{job.pomPath}</a> · {job.status}</div>)}</div>}</div>}
   </div>
 }

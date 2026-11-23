@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.Executor;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -41,6 +42,12 @@ public class DependencyAnalysisService {
     private final SecurityScanReportRepository reports;
     private final Executor executor;
     private final String dependencyPluginVersion;
+    /**
+     * Replacing a project's tree is a delete-and-recreate operation. Maven
+     * analyses for different projects may still run in parallel, but two
+     * replacements for the same project must not overlap.
+     */
+    private final ConcurrentHashMap<UUID, Object> graphReplacementLocks = new ConcurrentHashMap<>();
 
     public DependencyAnalysisService(ProjectRepository projects, RepositoryRepository repositories,
                                      ExternalProcessRunner processRunner, MavenDependencyTreeParser parser,
@@ -121,7 +128,7 @@ public class DependencyAnalysisService {
             }
             List<MavenCoordinate> coordinates = parser.parse(treeOutput.toString());
             log.info("Parsed Maven dependency tree jobId={} coordinates={} ancestorsAvailable={}", jobId, coordinates.size(), ancestorsAvailable);
-            graph.replace(project, coordinates, ancestorsAvailable);
+            replaceGraphSerially(project, coordinates, ancestorsAvailable);
             markFinished(projectId, true);
             updateReportStatus(reportId, ReportStatus.READY);
             jobs.finish(jobId, ancestorsAvailable ? JobStatus.SUCCESS : JobStatus.SUCCESS, 0, null,
@@ -131,6 +138,18 @@ public class DependencyAnalysisService {
             markFinished(projectId, false);
             updateReportStatus(reportId, ReportStatus.FAILED);
             jobs.finish(jobId, JobStatus.FAILED, null, "MAVEN_ANALYSIS_FAILED", exception.getMessage());
+        }
+    }
+
+    private void replaceGraphSerially(Project project, List<MavenCoordinate> coordinates,
+                                      boolean ancestorsAvailable) {
+        Object lock = graphReplacementLocks.computeIfAbsent(project.getId(), ignored -> new Object());
+        try {
+            synchronized (lock) {
+                graph.replace(project, coordinates, ancestorsAvailable);
+            }
+        } finally {
+            graphReplacementLocks.remove(project.getId(), lock);
         }
     }
 
