@@ -90,6 +90,31 @@ class EffectivePomTest {
     }
 
     @Test
+    void prefersVersionLocationCommentOverPreviousArtifactComment() throws Exception {
+        Path file = temporaryDirectory.resolve("verbose-effective-pom.xml");
+        Files.writeString(file, """
+                <project>
+                  <groupId>com.test</groupId>
+                  <artifactId>app</artifactId>
+                  <version>1.0</version>
+                  <dependencies>
+                    <dependency>
+                      <groupId>org.example</groupId>
+                      <artifactId>lib</artifactId>  <!-- com.test:parent:1.0, line 42 -->
+                      <version>2.0</version> <!-- com.test:app:1.0, line 43 -->
+                    </dependency>
+                  </dependencies>
+                </project>
+                """);
+
+        EffectivePom model = new EffectivePomParser(new NioFileSystemAdapter()).parseModel(file,
+                new EffectivePom.Metadata("hash", java.time.Instant.now()), java.util.List.of());
+
+        assertEquals("com.test:app:1.0", model.dependencies().get(0).versionLocation().artifact());
+        assertEquals(43, model.dependencies().get(0).versionLocation().line());
+    }
+
+    @Test
     void rejectsDoctypeAndExternalEntities() throws Exception {
         Path file = temporaryDirectory.resolve("malicious.xml");
         Files.writeString(file, """

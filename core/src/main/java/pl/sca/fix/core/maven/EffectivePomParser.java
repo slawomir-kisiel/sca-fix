@@ -122,7 +122,7 @@ public final class EffectivePomParser {
         NodeList nodes = parent.getChildNodes();
         for (int index = 0; index < nodes.getLength(); index++) {
             if (nodes.item(index) != version) continue;
-            for (int offset : new int[] {-1, 1}) {
+            for (int offset : new int[]{1, -1}) {
                 int candidate = index + offset;
                 while (candidate >= 0 && candidate < nodes.getLength()) {
                     Node sibling = nodes.item(candidate);
