@@ -4,11 +4,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import java.util.List;
 
-/** Small diagnostic entry point for inspecting parser output without running the pipeline. */
+/**
+ * Small diagnostic entry point for inspecting parser output without running the
+ * pipeline.
+ */
 public final class CliConfigurationPreview {
+
     private static final int HELP_OPTION_WIDTH = 52;
 
-    private CliConfigurationPreview() { }
+    private CliConfigurationPreview() {
+    }
 
     public static void main(String[] args) throws Exception {
         if (args.length == 0 || contains(args, "--help") || contains(args, "-h")) {
@@ -16,7 +21,7 @@ public final class CliConfigurationPreview {
             return;
         }
         if (contains(args, "--version")) {
-            System.out.println("sca-fix-cli 0.1.0-SNAPSHOT");
+            System.out.println("sca-fix-cli 0.1.1-SNAPSHOT");
             return;
         }
         try {
@@ -30,7 +35,11 @@ public final class CliConfigurationPreview {
     }
 
     private static boolean contains(String[] args, String expected) {
-        for (String arg : args) if (expected.equals(arg)) return true;
+        for (String arg : args) {
+            if (expected.equals(arg)) {
+                return true;
+            }
+        }
         return false;
     }
 
@@ -106,11 +115,15 @@ public final class CliConfigurationPreview {
     }
 
     private static void commands(List<String[]> values) {
-        for (String[] value : values) System.out.printf("  %-18s%s%n", value[0], value[1]);
+        for (String[] value : values) {
+            System.out.printf("  %-18s%s%n", value[0], value[1]);
+        }
     }
 
     private static void options(List<String[]> values) {
-        for (String[] value : values) System.out.printf("  %-" + HELP_OPTION_WIDTH + "s%s%n", value[0], value[1]);
+        for (String[] value : values) {
+            System.out.printf("  %-" + HELP_OPTION_WIDTH + "s%s%n", value[0], value[1]);
+        }
     }
 
     private static void printLegacyHelp() {

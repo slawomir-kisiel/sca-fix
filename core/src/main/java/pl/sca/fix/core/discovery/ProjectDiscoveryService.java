@@ -180,10 +180,15 @@ public final class ProjectDiscoveryService {
         String groupId = descriptor.groupId();
         String version = descriptor.version();
         Path parentPath = findLocalParent(parent, descriptors);
-        if (parentPath != null && (groupId == null || version == null)) {
-            ArtifactCoordinate parentCoordinate = resolveCoordinate(parentPath, descriptors, resolved, visiting);
-            if (groupId == null) groupId = parentCoordinate.groupId();
-            if (version == null) version = parentCoordinate.version();
+        if (parent != null && (groupId == null || version == null)) {
+            if (parentPath != null) {
+                ArtifactCoordinate parentCoordinate = resolveCoordinate(parentPath, descriptors, resolved, visiting);
+                if (groupId == null) groupId = parentCoordinate.groupId();
+                if (version == null) version = parentCoordinate.version();
+            } else {
+                if (groupId == null) groupId = parent.groupId();
+                if (version == null) version = parent.version();
+            }
         }
         visiting.remove(path);
         if (groupId == null || descriptor.artifactId() == null || version == null) {

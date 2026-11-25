@@ -61,6 +61,24 @@ class ProjectDiscoveryServiceTest {
     }
 
     @Test
+    void inheritsMissingCoordinatesFromExternalParentDeclaration() throws Exception {
+        write("child/pom.xml", """
+                <project><modelVersion>4.0.0</modelVersion>
+                  <parent><groupId>com.external</groupId><artifactId>parent</artifactId><version>2.0</version></parent>
+                  <artifactId>child</artifactId>
+                </project>
+                """);
+        PortTestDoubles.StubGitPort git = git("child/pom.xml");
+
+        ProjectDiscoveryResult result = service(git).discover(
+                ProjectDiscoveryRequest.cli(repository, List.of("com.external:child")));
+
+        assertEquals("com.external", result.projects().get(0).coordinate().groupId());
+        assertEquals("2.0", result.projects().get(0).coordinate().version());
+        assertEquals("com.external:parent:2.0", result.projects().get(0).parent().gav());
+    }
+
+    @Test
     void supportsExactSelectorsWildcardAndCommaSeparatedValues() throws Exception {
         write("a/pom.xml", pom("com.test", "a", "1.0", null, null));
         write("b/pom.xml", pom("com.test", "b", "1.0", null, null));

@@ -136,6 +136,35 @@ class AutomaticPlanningServiceTest {
     }
 
     @Test
+    void prefersDirectEffectiveDependencyVersionOverDependencyManagementVersion() throws Exception {
+        Path pom = temporaryDirectory.resolve("pom.xml");
+        Files.writeString(pom, """
+                <project><dependencies><dependency>
+                  <groupId>g</groupId><artifactId>a</artifactId><version>${a.version}</version>
+                </dependency></dependencies></project>
+                """);
+        EffectivePom effectivePom = new EffectivePom(
+                new EffectivePom.Metadata("hash", Instant.parse("2026-01-01T00:00:00Z")),
+                "p", "project", "1.0.0", null,
+                List.of(new EffectivePom.Dependency("g", "a", "1.6.7", null, null, null,
+                        new EffectivePom.VersionLocation("project", 2))),
+                List.of(new EffectivePom.Dependency("g", "a", "1.2.13", null, null, null, null)), List.of());
+        PlanningProject project = new PlanningProject("project", pom, effectivePom, true);
+
+        AutomaticPlanningResult result = new AutomaticPlanningService().plan(
+                report(library()), correlation(library(), CorrelationStatus.MATCHED,
+                        List.of(new DependencyTreeOccurrence("project", "project/0", "0", 1, null,
+                                "1.2.13", "DEPENDENCY"))), List.of(project),
+                Map.of("g:a", List.of(version("1.6.8"))), temporaryDirectory,
+                "0123456789012345678901234567890123456789", UpdateLevel.MINOR,
+                AmbiguousStrategy.COMMON_SOURCE, false);
+
+        assertEquals("PROPERTY", result.plan().items().get(0).strategy());
+        assertEquals("1.6.7", result.plan().items().get(0).currentVersion());
+        assertEquals("1.6.8", result.plan().items().get(0).targetVersion());
+    }
+
+    @Test
     void doesNotCreateDirectDependencyForVersionOwnedByUnregisteredParent() throws Exception {
         Path pom = temporaryDirectory.resolve("child-pom.xml");
         Files.writeString(pom, """

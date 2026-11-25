@@ -14,7 +14,7 @@ if errorlevel 1 (
 )
 
 echo [sca-fix-tool] Starting application with H2 Console on http://localhost:8080/h2-console ...
-start "SCA-fix-tool" cmd /c "java -jar backend\target\sca-fix-backend-0.1.0-SNAPSHOT.jar"
+start "SCA-fix-tool" cmd /c "java -jar backend\target\sca-fix-backend-0.1.1-SNAPSHOT.jar"
 
 echo [sca-fix-tool] Waiting for the application...
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$deadline=(Get-Date).AddSeconds(60); while((Get-Date) -lt $deadline) { try { $connection=Test-NetConnection -ComputerName localhost -Port 8080 -WarningAction SilentlyContinue; if($connection.TcpTestSucceeded) { Start-Process 'http://localhost:8080/h2-console'; exit 0 } } catch {} Start-Sleep -Seconds 1 }; Write-Error 'Application did not become available on port 8080'; exit 1"

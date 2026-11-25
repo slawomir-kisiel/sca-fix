@@ -14,8 +14,10 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import pl.sca.fix.core.maven.EffectivePom;
 import pl.sca.fix.core.maven.EffectivePomParser;
 import pl.sca.fix.core.maven.MavenVersionComparator;
@@ -173,10 +175,16 @@ public final class OverrideReviewService {
                     String block = dependency.group();
                     Matcher group = GROUP.matcher(block), artifact = ARTIFACT.matcher(block), version = VERSION.matcher(block);
                     if (!group.find() || !artifact.find() || !version.find()) continue;
-                    String property = version.group(1);
+                    String groupId = group.group(1).trim();
+                    String artifactId = artifact.group(1).trim();
+                    String property = version.group(1).trim();
+                    if (!property.startsWith("cve-override." + artifactId + ".version")) {
+                        continue;
+                    }
                     String propertyPattern = "<" + Pattern.quote(property) + ">\\s*([^<]+?)\\s*</" + Pattern.quote(property) + ">";
                     Matcher propertyMatcher = Pattern.compile(propertyPattern).matcher(xml);
-                    if (propertyMatcher.find()) result.add(new OverrideDeclaration(group.group(1).trim(), artifact.group(1).trim(),
+                    if (propertyMatcher.find())
+                        result.add(new OverrideDeclaration(groupId, artifactId,
                             property, propertyMatcher.group(1).trim(), block));
                 }
             }

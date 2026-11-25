@@ -9,6 +9,7 @@ import pl.sca.fix.core.pipeline.ScaFixPipeline;
 /** Renders a fixed-width plan table with continuous ASCII borders. */
 public final class PlanTableRenderer {
     private static final int DEPENDENCY_LIMIT = 60;
+    private static final int WARNING_MESSAGE_LIMIT = 100;
     private static final String[] HEADERS = {"Dependency", "Current", "Target", "Project", "Strategy", "Status"};
 
     public static String renderStageHeader(ScaFixPipeline.StageProgress progress) {
@@ -61,17 +62,25 @@ public final class PlanTableRenderer {
         if (safe.isEmpty()) return "";
         String[] headers = {"STAGE", "reason", "message"};
         List<String[]> values = safe.stream()
-                .map(issue -> new String[]{text(issue.stage()), text(issue.reason()), shortenMessage(issue.message())})
+                .map(issue -> new String[]{text(issue.stage()), text(issue.reason()), text(issue.message())})
                 .toList();
         int[] widths = new int[headers.length];
         for (int i = 0; i < headers.length; i++) widths[i] = headers[i].length();
-        for (String[] value : values) for (int i = 0; i < widths.length; i++)
-            widths[i] = Math.max(widths[i], value[i].length());
+        widths[0] = values.stream().mapToInt(value -> value[0].length()).max().orElse(widths[0]);
+        widths[1] = values.stream().mapToInt(value -> value[1].length()).max().orElse(widths[1]);
+        widths[2] = Math.min(WARNING_MESSAGE_LIMIT,
+                values.stream().mapToInt(value -> value[2].length()).max().orElse(widths[2]));
         StringBuilder result = new StringBuilder("Warnings:\n");
         border(result, widths);
         row(result, headers, widths);
         border(result, widths);
-        for (String[] value : values) row(result, value, widths);
+        for (String[] value : values) {
+            List<String> messageLines = wrap(value[2], WARNING_MESSAGE_LIMIT);
+            row(result, new String[]{value[0], value[1], messageLines.get(0)}, widths);
+            for (int line = 1; line < messageLines.size(); line++) {
+                row(result, new String[]{"", "", messageLines.get(line)}, widths);
+            }
+        }
         border(result, widths);
         return result.toString();
     }
@@ -128,9 +137,14 @@ public final class PlanTableRenderer {
 
     private static String firstCharacter(String value) { return value.isEmpty() ? value : value.substring(0, 1); }
     private static String text(String value) { return value == null ? "" : value; }
-    private static String shortenMessage(String value) {
+    private static List<String> wrap(String value, int limit) {
         String text = text(value);
-        return text.length() <= 512 ? text : text.substring(0, 509) + "...";
+        if (text.isEmpty()) return List.of("");
+        List<String> lines = new ArrayList<>();
+        for (int offset = 0; offset < text.length(); offset += limit) {
+            lines.add(text.substring(offset, Math.min(offset + limit, text.length())));
+        }
+        return lines;
     }
 
     public record PlanRow(String dependency, String current, String target, String project,

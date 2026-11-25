@@ -16,14 +16,16 @@ class GitProcessAdapterTest {
     @Test
     void parsesMachineReadableStatusAndCommit() {
         RecordingRunner runner = new RecordingRunner(
-                new ProcessResult(0, "## feature/sca...origin/feature/sca\n M pom.xml\n?? new.txt\n", "", Duration.ZERO, false),
+                new ProcessResult(0, "## feature/sca...origin/feature/sca\n M pom.xml\n?? new.txt\n"
+                        + "?? \"core/eflow-common/plik ze spacjami.md\"\n", "", Duration.ZERO, false),
                 new ProcessResult(0, "abc123\n", "", Duration.ZERO, false));
 
         var status = new GitProcessAdapter(runner).status(Path.of("checkout"));
 
         assertEquals("feature/sca", status.branch());
         assertEquals("abc123", status.commitSha());
-        assertEquals(List.of(Path.of("pom.xml"), Path.of("new.txt")), status.changedFiles());
+        assertEquals(List.of(Path.of("pom.xml"), Path.of("new.txt"),
+                Path.of("core/eflow-common/plik ze spacjami.md")), status.changedFiles());
         assertEquals(List.of("status", "rev-parse"), runner.commands().stream()
                 .map(command -> command.command().get(1)).toList());
     }

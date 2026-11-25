@@ -8,15 +8,21 @@ import pl.sca.fix.core.workspace.FileWorkspaceStore;
 import pl.sca.fix.core.workspace.WorkspaceStateJsonCodec;
 import pl.sca.fix.core.maven.NioFileSystemAdapter;
 
-/** Production entry point for the standalone executable CLI. */
+/**
+ * Production entry point for the standalone executable CLI.
+ */
 public final class CliApplication {
+
     private static final Logger LOG = LoggerFactory.getLogger(CliApplication.class);
 
-    private CliApplication() { }
+    private CliApplication() {
+    }
 
     public static void main(String[] args) {
         int exitCode = run(args);
-        if (exitCode != 0) System.exit(exitCode);
+        if (exitCode != 0) {
+            System.exit(exitCode);
+        }
     }
 
     static int run(String[] args) {
@@ -30,11 +36,13 @@ public final class CliApplication {
                 return 0;
             }
             if (contains(args, "--version")) {
-                System.out.println("sca-fix-cli 0.1.0-SNAPSHOT");
+                System.out.println("sca-fix-cli 0.1.1-SNAPSHOT");
                 return 0;
             }
             CliConfiguration configuration = new CliConfigurationParser().parse(args);
-            if (configuration == null) return 0;
+            if (configuration == null) {
+                return 0;
+            }
             NioFileSystemAdapter files = new NioFileSystemAdapter();
             FileWorkspaceStore store = new FileWorkspaceStore(configuration.workspaceRoot(), files,
                     new WorkspaceStateJsonCodec());
@@ -58,7 +66,11 @@ public final class CliApplication {
     }
 
     private static boolean contains(String[] args, String expected) {
-        for (String arg : args) if (expected.equals(arg)) return true;
+        for (String arg : args) {
+            if (expected.equals(arg)) {
+                return true;
+            }
+        }
         return false;
     }
 

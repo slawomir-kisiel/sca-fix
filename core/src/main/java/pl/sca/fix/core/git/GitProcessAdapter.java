@@ -70,6 +70,7 @@ public final class GitProcessAdapter implements GitPort, pl.sca.fix.core.port.Gi
             String file = line.substring(3).trim();
             int renameSeparator = file.indexOf(" -> ");
             if (renameSeparator >= 0) file = file.substring(renameSeparator + 4).trim();
+            file = unquoteGitPath(file);
             if (!file.isBlank()) changed.add(Path.of(file));
         }
         return new GitStatus(true, changed.isEmpty(), currentCommitSha(repository), changed, branch);
@@ -172,5 +173,30 @@ public final class GitProcessAdapter implements GitPort, pl.sca.fix.core.port.Gi
     private static String compact(String value) {
         String normalized = Objects.requireNonNullElse(value, "").replaceAll("\\s+", " ").trim();
         return normalized.length() > 500 ? normalized.substring(0, 500) + "..." : normalized;
+    }
+
+    private static String unquoteGitPath(String value) {
+        if (value.length() < 2 || value.charAt(0) != '"' || value.charAt(value.length() - 1) != '"') return value;
+        StringBuilder result = new StringBuilder(value.length() - 2);
+        for (int index = 1; index < value.length() - 1; index++) {
+            char current = value.charAt(index);
+            if (current != '\\' || index + 1 >= value.length() - 1) {
+                result.append(current);
+                continue;
+            }
+            char escaped = value.charAt(++index);
+            switch (escaped) {
+                case '"', '\\' -> result.append(escaped);
+                case 'a' -> result.append('\u0007');
+                case 'b' -> result.append('\b');
+                case 't' -> result.append('\t');
+                case 'n' -> result.append('\n');
+                case 'v' -> result.append('\u000b');
+                case 'f' -> result.append('\f');
+                case 'r' -> result.append('\r');
+                default -> result.append(escaped);
+            }
+        }
+        return result.toString();
     }
 }

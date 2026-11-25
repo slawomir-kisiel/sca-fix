@@ -43,20 +43,26 @@ class PlanTableRendererTest {
     }
 
     @Test
-    void rendersWarningsOnlyWhenPresentAndTruncatesLongMessages() {
+    void wrapsWarningMessagesAtOneHundredCharacters() {
         WorkspaceState.Issue warning = new WorkspaceState.Issue(
                 "NO_VERSION_RECOMMENDATION",
-                "x".repeat(600),
+                "x".repeat(101),
                 "PLANNING",
                 Instant.parse("2026-11-23T10:00:00Z"));
 
         String table = renderer.renderWarnings(List.of(warning));
+        String[] lines = table.split("\\R");
 
         assertTrue(table.startsWith("Warnings:\n"));
         assertTrue(table.contains("| STAGE"));
         assertTrue(table.contains("PLANNING"));
         assertTrue(table.contains("NO_VERSION_RECOMMENDATION"));
-        assertTrue(table.contains("x".repeat(509) + "..."));
+        assertTrue(table.contains("x".repeat(100)));
+        assertTrue(lines[5].startsWith("|          |                           | x"));
+        assertTrue(lines[5].endsWith("|") && !lines[5].contains("PLANNING"));
+        assertTrue(table.endsWith("+----------+---------------------------+" + "-".repeat(102) + "+\n"));
+        assertTrue(table.lines().noneMatch(line -> line.contains("...")));
+        assertTrue(java.util.Arrays.stream(lines).skip(1).allMatch(line -> line.length() == lines[1].length()));
         assertEquals("", renderer.renderWarnings(List.of()));
     }
 

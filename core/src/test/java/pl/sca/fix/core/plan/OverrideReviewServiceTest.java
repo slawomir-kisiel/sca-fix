@@ -2,6 +2,7 @@ package pl.sca.fix.core.plan;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
@@ -50,6 +51,34 @@ class OverrideReviewServiceTest {
         assertFalse(maven.effectivePomOutput.toString().contains("${revision}"));
         assertTrue(Files.list(temporaryDirectory)
                 .noneMatch(path -> path.getFileName().toString().contains("scafix-override-")));
+    }
+
+    @Test
+    void ignoresDependencyManagementVersionsThatDoNotUseCveOverrideProperty() throws Exception {
+        Path pom = temporaryDirectory.resolve("pom.xml");
+        String original = """
+                <project><groupId>g</groupId><artifactId>app</artifactId><version>1</version>
+                  <dependencyManagement><dependencies><dependency>
+                    <groupId>g</groupId><artifactId>a</artifactId>
+                    <version>${regular.a.version}</version>
+                  </dependency></dependencies></dependencyManagement>
+                  <properties><regular.a.version>1.0.0</regular.a.version></properties>
+                </project>
+                """;
+        Files.writeString(pom, original);
+        PlanningProject project = new PlanningProject("g:app:1", pom, effective("1.0.0"), true);
+        FakeMaven maven = new FakeMaven("2.0.0");
+
+        OverrideReviewResult result = new OverrideReviewService(new NioFileSystemAdapter(),
+                maven, temporaryDirectory.resolve("probe"))
+                .review(List.of(project), temporaryDirectory, "commit", null);
+
+        assertTrue(result.entries().isEmpty());
+        assertTrue(result.plan().items().isEmpty());
+        assertTrue(result.plan().warnings().isEmpty());
+        assertTrue(result.plan().errors().isEmpty());
+        assertNull(maven.effectivePomOutput);
+        assertEquals(original, Files.readString(pom));
     }
 
     private static EffectivePom effective(String version) {

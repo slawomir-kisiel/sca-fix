@@ -133,11 +133,12 @@ public final class AutomaticPlanningService {
         }
         String versionKey = library.groupId() + ":" + library.artifactId();
         UpdateLevel recommendationLevel = "CVE_OVERRIDE".equals(declaration.strategy()) ? cveLevel : level;
+        String currentVersion = currentVersion(library, occurrence, changeProject);
         VersionRecommendation recommendation = recommendations.recommend(library.groupId(), library.artifactId(),
-                occurrence.resolvedVersion(), versions.getOrDefault(versionKey, List.of()), recommendationLevel);
+                currentVersion, versions.getOrDefault(versionKey, List.of()), recommendationLevel);
         if (recommendation.recommendedVersion() == null) {
             issues.add(issue("NO_VERSION_RECOMMENDATION", "library=" + versionKey
-                    + " currentVersion=" + occurrence.resolvedVersion() + " updateLevel=" + recommendationLevel
+                    + " currentVersion=" + currentVersion + " updateLevel=" + recommendationLevel
                     + " projectId=" + occurrence.projectId() + " occurrencePath=" + occurrence.pathId()));
             return null;
         }
@@ -146,11 +147,33 @@ public final class AutomaticPlanningService {
         return new PlanItem(stableItemId(pomPath, library, declaration.strategy),
                 new PlanProject(changeProject.effectivePom().groupId(), changeProject.effectivePom().artifactId(),
                         changeProject.effectivePom().version(), pomPath),
-                new PlanArtifact(library.groupId(), library.artifactId()), occurrence.resolvedVersion(),
+                new PlanArtifact(library.groupId(), library.artifactId()), currentVersion,
                 recommendation.recommendedVersion(), declaration.strategy, cve == null ? null
                         : new PlanFinding(cve, "CANONICAL_REPORT", occurrence.pathId()),
                 changeProject.effectivePom().metadata().hash(), commitSha, "PLANNED", List.of(), List.of(),
                 declaration.details());
+    }
+
+    private static String currentVersion(VulnerableLibrary library, DependencyTreeOccurrence occurrence,
+                                         PlanningProject project) {
+        if (project != null && project.effectivePom() != null) {
+            String key = library.groupId() + ":" + library.artifactId();
+            String direct = project.effectivePom().dependencies().stream()
+                    .filter(dependency -> dependency.key().equals(key))
+                    .map(EffectivePom.Dependency::version)
+                    .filter(java.util.Objects::nonNull)
+                    .findFirst()
+                    .orElse(null);
+            if (direct != null) return direct;
+            String managed = project.effectivePom().dependencyManagement().stream()
+                    .filter(dependency -> dependency.key().equals(key))
+                    .map(EffectivePom.Dependency::version)
+                    .filter(java.util.Objects::nonNull)
+                    .findFirst()
+                    .orElse(null);
+            if (managed != null) return managed;
+        }
+        return occurrence.resolvedVersion();
     }
 
     private static Declaration declaration(VulnerableLibrary library, PlanningProject project,
