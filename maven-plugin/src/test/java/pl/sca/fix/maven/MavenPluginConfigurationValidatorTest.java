@@ -24,4 +24,22 @@ class MavenPluginConfigurationValidatorTest {
                 "R1d,S10m", true, true, false, "branch", false, false);
         assertThrows(IllegalArgumentException.class, () -> new MavenPluginConfigurationValidator().validate(config));
     }
+
+    @Test
+    void acceptsSkipLibraryDescriptors() {
+        MavenPluginConfiguration config = new MavenPluginConfiguration(Path.of("checkout"), Path.of("workspaces"),
+                Path.of("poms"), List.of("*"), "file", Path.of("report.json"), null, UpdateLevel.MINOR, "COMMON_SOURCE",
+                "R1d,S10m", false, true, false, null, false, false,
+                List.of("com.google.guava", "org.apache:collections4", "org.wso2:test-unit:3."));
+
+        assertDoesNotThrow(() -> new MavenPluginConfigurationValidator().validate(config));
+    }
+
+    @Test
+    void rejectsMalformedSkipLibraryDescriptor() {
+        assertThrows(IllegalArgumentException.class, () -> new MavenPluginConfiguration(Path.of("checkout"),
+                Path.of("workspaces"), Path.of("poms"), List.of("*"), null, null, null, UpdateLevel.MINOR,
+                "COMMON_SOURCE", "R1d,S10m", false, true, false, null, false, false,
+                List.of("org:library:1:extra")));
+    }
 }

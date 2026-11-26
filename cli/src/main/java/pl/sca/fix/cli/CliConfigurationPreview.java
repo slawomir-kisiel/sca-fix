@@ -4,16 +4,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import java.util.List;
 
-/**
- * Small diagnostic entry point for inspecting parser output without running the
- * pipeline.
- */
+/** Small diagnostic entry point for inspecting parser output without running the pipeline. */
 public final class CliConfigurationPreview {
-
     private static final int HELP_OPTION_WIDTH = 52;
 
-    private CliConfigurationPreview() {
-    }
+    private CliConfigurationPreview() { }
 
     public static void main(String[] args) throws Exception {
         if (args.length == 0 || contains(args, "--help") || contains(args, "-h")) {
@@ -21,7 +16,7 @@ public final class CliConfigurationPreview {
             return;
         }
         if (contains(args, "--version")) {
-            System.out.println("sca-fix-cli 0.1.1-SNAPSHOT");
+            System.out.println("sca-fix-cli 0.1.0-SNAPSHOT");
             return;
         }
         try {
@@ -35,11 +30,7 @@ public final class CliConfigurationPreview {
     }
 
     private static boolean contains(String[] args, String expected) {
-        for (String arg : args) {
-            if (expected.equals(arg)) {
-                return true;
-            }
-        }
+        for (String arg : args) if (expected.equals(arg)) return true;
         return false;
     }
 
@@ -73,7 +64,9 @@ public final class CliConfigurationPreview {
         System.out.println();
         System.out.println("scan:");
         options(List.of(
-                new String[]{"--report-source file|generate", "Źródło raportu; wymagane dla scan."},
+                new String[]{"--report-source file|owasp", "Źródło raportu; wymagane dla scan."},
+                new String[]{"--nvd-api-key <key>", "Klucz NVD; alternatywnie zmienna NVD_API_KEY."},
+                new String[]{"--dependency-check-version <version>", "Wersja pluginu OWASP Dependency-Check (domyślnie 12.1.9)."},
                 new String[]{"--report-input <plik>", "Wejściowy raport dla source=file."},
                 new String[]{"--report-output <plik>", "Opcjonalny zapis raportu kanonicznego."},
                 new String[]{"--update-level MAJOR|MINOR|PATCH", "Poziom aktualizacji zależności."},
@@ -115,15 +108,11 @@ public final class CliConfigurationPreview {
     }
 
     private static void commands(List<String[]> values) {
-        for (String[] value : values) {
-            System.out.printf("  %-18s%s%n", value[0], value[1]);
-        }
+        for (String[] value : values) System.out.printf("  %-18s%s%n", value[0], value[1]);
     }
 
     private static void options(List<String[]> values) {
-        for (String[] value : values) {
-            System.out.printf("  %-" + HELP_OPTION_WIDTH + "s%s%n", value[0], value[1]);
-        }
+        for (String[] value : values) System.out.printf("  %-" + HELP_OPTION_WIDTH + "s%s%n", value[0], value[1]);
     }
 
     private static void printLegacyHelp() {
@@ -153,7 +142,8 @@ public final class CliConfigurationPreview {
         System.out.println("  --version                  Wyświetla wersję programu.");
         System.out.println();
         System.out.println("scan:");
-        System.out.println("  --report-source file|generate  Źródło raportu; wymagane dla scan.");
+        System.out.println("  --report-source file|owasp     Źródło raportu; wymagane dla scan.");
+        System.out.println("  --nvd-api-key <key>            Klucz NVD; alternatywnie zmienna NVD_API_KEY.");
         System.out.println("  --report-input <plik>          Wejściowy raport dla source=file.");
         System.out.println("  --report-output <plik>         Opcjonalny zapis raportu kanonicznego.");
         System.out.println("  --update-level MAJOR|MINOR|PATCH");

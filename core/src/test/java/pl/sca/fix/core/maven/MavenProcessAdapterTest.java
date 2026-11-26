@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import pl.sca.fix.core.port.MavenDependencyTreeRequest;
 import pl.sca.fix.core.port.MavenEffectivePomRequest;
+import pl.sca.fix.core.port.MavenOwaspReportRequest;
 import pl.sca.fix.core.port.PortException;
 import pl.sca.fix.core.port.PortTestDoubles;
 import pl.sca.fix.core.port.ProcessResult;
@@ -55,6 +56,27 @@ class MavenProcessAdapterTest {
         assertTrue(runner.lastRequest().command().contains("-Dverbose"));
         assertTrue(runner.lastRequest().command().contains(
                 "org.apache.maven.plugins:maven-dependency-plugin:3.8.1:tree"));
+    }
+
+    @Test
+    void buildsOwaspAggregateCommandWithoutExposingApiKeyInDisplayCommand() throws Exception {
+        Path pom = temporaryDirectory.resolve("pom.xml");
+        Path outputDirectory = temporaryDirectory.resolve("report");
+        Files.createDirectories(outputDirectory);
+        Files.writeString(outputDirectory.resolve("dependency-check-report.json"), "{}");
+        PortTestDoubles.StubProcessRunner runner = new PortTestDoubles.StubProcessRunner(success());
+        MavenProcessAdapter adapter = new MavenProcessAdapter(runner, new PortTestDoubles.TempFileSystem(),
+                MavenToolConfiguration.defaults(false));
+
+        adapter.generateOwaspReport(new MavenOwaspReportRequest(pom, outputDirectory, "12.1.9",
+                "nvd", "ossindex", "secret-value"));
+
+        assertTrue(runner.lastRequest().command().contains(
+                "org.owasp:dependency-check-maven:12.1.9:aggregate"));
+        assertTrue(runner.lastRequest().command().contains("-Dformat=json"));
+        assertTrue(runner.lastRequest().command().contains(
+                "-Dodc.outputDirectory=" + outputDirectory.toAbsolutePath().normalize()));
+        assertTrue(runner.lastRequest().command().contains("-DnvdApiKey=secret-value"));
     }
 
     @Test

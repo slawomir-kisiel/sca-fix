@@ -13,9 +13,23 @@ import pl.sca.fix.core.port.ProcessRunnerPort;
 
 /** Local process adapter used only by the command-line preview. */
 public final class SystemProcessRunner implements ProcessRunnerPort {
+    private final boolean verbose;
+
+    public SystemProcessRunner() {
+        this(false);
+    }
+
+    public SystemProcessRunner(boolean verbose) {
+        this.verbose = verbose;
+    }
+
     @Override
     public ProcessResult run(ProcessRequest request) {
         Instant started = Instant.now();
+        if (verbose) {
+            System.err.println("[verbose] $ " + safeDisplayCommand(request));
+            System.err.println("[verbose] cwd: " + request.workingDirectory());
+        }
         try {
             ProcessBuilder builder = new ProcessBuilder(request.command())
                     .directory(request.workingDirectory().toFile());
@@ -28,19 +42,38 @@ public final class SystemProcessRunner implements ProcessRunnerPort {
             boolean finished = process.waitFor(request.timeout().toMillis(), TimeUnit.MILLISECONDS);
             if (!finished) {
                 process.destroyForcibly();
-                return new ProcessResult(-1, stdout.join(), stderr.join(), Duration.between(started, Instant.now()), true);
+                ProcessResult result = new ProcessResult(-1, stdout.join(), stderr.join(),
+                        Duration.between(started, Instant.now()), true);
+                printOutput(result);
+                return result;
             }
-            return new ProcessResult(process.exitValue(), stdout.join(), stderr.join(),
+            ProcessResult result = new ProcessResult(process.exitValue(), stdout.join(), stderr.join(),
                     Duration.between(started, Instant.now()), false);
+            printOutput(result);
+            return result;
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new PortException(PortException.Kind.IO, "Process execution interrupted", exception);
         } catch (IOException exception) {
-            throw new PortException(PortException.Kind.IO, "Unable to start external process: "
-                    + request.displayCommand(), exception);
+                throw new PortException(PortException.Kind.IO, "Unable to start external process: "
+                        + safeDisplayCommand(request), exception);
         } catch (RuntimeException exception) {
             throw new PortException(PortException.Kind.IO, "Unable to read process output", exception);
         }
+    }
+
+    private void printOutput(ProcessResult result) {
+        if (!verbose) return;
+        print(System.out, "stdout", result.stdout());
+        print(System.err, "stderr", result.stderr());
+        System.err.println("[verbose] exitCode=" + result.exitCode() + " timedOut=" + result.timedOut());
+    }
+
+    private static void print(java.io.PrintStream stream, String name, String value) {
+        if (value == null || value.isEmpty()) return;
+        stream.println("[verbose] " + name + ":");
+        stream.print(value);
+        if (!value.endsWith("\n") && !value.endsWith("\r")) stream.println();
     }
 
     private static String read(java.io.InputStream input) {
@@ -49,5 +82,9 @@ public final class SystemProcessRunner implements ProcessRunnerPort {
         } catch (IOException exception) {
             throw new PortException(PortException.Kind.IO, "Unable to read process output", exception);
         }
+    }
+
+    private static String safeDisplayCommand(ProcessRequest request) {
+        return request.displayCommand().replaceAll("(?i)(-DnvdApiKey=)[^\\s]+", "$1***");
     }
 }

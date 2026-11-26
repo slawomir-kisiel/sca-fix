@@ -26,6 +26,7 @@ abstract class AbstractScaFixMojo extends AbstractMojo {
     @Parameter(property = "scaFix.reportInput") protected File reportInput;
     @Parameter(property = "scaFix.reportOutput") protected File reportOutput;
     @Parameter(property = "scaFix.updateLevel", defaultValue = "MINOR") protected String updateLevel;
+    @Parameter(property = "scaFix.cveOverrideUpdateLevel", defaultValue = "PATCH") protected String cveOverrideUpdateLevel;
     @Parameter(property = "scaFix.ambiguousStrategy", defaultValue = "COMMON_SOURCE") protected String ambiguousStrategy;
     @Parameter(property = "scaFix.versionInfoTtl", defaultValue = "R1d,S10m") protected String versionInfoTtl;
     @Parameter(property = "scaFix.ignoreLocalChanges", defaultValue = "false") protected boolean ignoreLocalChanges;
@@ -34,6 +35,7 @@ abstract class AbstractScaFixMojo extends AbstractMojo {
     @Parameter(property = "scaFix.push") protected String pushBranch;
     @Parameter(property = "scaFix.overrideReview", defaultValue = "false") protected boolean overrideReview;
     @Parameter(property = "scaFix.verbose", defaultValue = "false") protected boolean verbose;
+    @Parameter(property = "scaFix.skip") protected String skip;
 
     protected MavenPluginConfiguration configuration() {
         Path repo = (repository == null || repository.isBlank() ? projectBaseDir.toPath() : Path.of(repository));
@@ -42,10 +44,18 @@ abstract class AbstractScaFixMojo extends AbstractMojo {
         UpdateLevel level;
         try { level = UpdateLevel.valueOf(updateLevel.toUpperCase()); }
         catch (RuntimeException exception) { throw new IllegalArgumentException("INVALID_UPDATE_LEVEL: " + updateLevel, exception); }
+        UpdateLevel cveLevel;
+        try { cveLevel = UpdateLevel.valueOf(cveOverrideUpdateLevel.toUpperCase()); }
+        catch (RuntimeException exception) { throw new IllegalArgumentException("INVALID_CVE_OVERRIDE_UPDATE_LEVEL: " + cveOverrideUpdateLevel, exception); }
         return new MavenPluginConfiguration(repo, workspaceRoot.toPath(), pomsRoot.toPath(), selected, reportSource,
                 reportInput == null ? null : reportInput.toPath(), reportOutput == null ? null : reportOutput.toPath(),
                 level, ambiguousStrategy, versionInfoTtl, ignoreLocalChanges, apply, commit, pushBranch,
-                overrideReview, verbose);
+                overrideReview, verbose, split(skip), cveLevel);
+    }
+
+    private static List<String> split(String value) {
+        return value == null ? List.of() : Arrays.stream(value.split(","))
+                .map(String::trim).filter(item -> !item.isBlank()).toList();
     }
 
     protected void execute(MavenPluginExecution execution) throws MojoExecutionException {

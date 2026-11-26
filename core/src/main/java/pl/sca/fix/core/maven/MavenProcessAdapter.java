@@ -13,6 +13,7 @@ import pl.sca.fix.core.port.MavenDependencyTreeRequest;
 import pl.sca.fix.core.port.MavenEffectivePomRequest;
 import pl.sca.fix.core.port.MavenExecutionResult;
 import pl.sca.fix.core.port.MavenPort;
+import pl.sca.fix.core.port.MavenOwaspReportRequest;
 import pl.sca.fix.core.port.PortException;
 import pl.sca.fix.core.port.ProcessRequest;
 import pl.sca.fix.core.port.ProcessResult;
@@ -69,6 +70,19 @@ public final class MavenProcessAdapter implements MavenPort {
                 treeResult.outputFile());
     }
 
+    @Override
+    public MavenExecutionResult generateOwaspReport(MavenOwaspReportRequest request) {
+        Objects.requireNonNull(request, "request must not be null");
+        List<String> command = baseCommand(request.pomFile(), false);
+        command.add(pluginGoal("org.owasp", "dependency-check-maven", request.pluginVersion(), "aggregate"));
+        command.add("-Dformat=json");
+        command.add("-Dodc.outputDirectory=" + absolute(request.outputDirectory()));
+        command.add("-DnvdApiServerId=" + request.nvdApiServerId());
+        command.add("-DossIndexServerId=" + request.ossIndexServerId());
+        if (request.nvdApiKey() != null) command.add("-DnvdApiKey=" + request.nvdApiKey());
+        return execute(command, request.outputFile());
+    }
+
     private MavenExecutionResult execute(List<String> command, Path outputFile) {
         MavenExecutionResult result = executeWithoutOutput(command, outputFile);
         if (!fileSystem.exists(outputFile)) {
@@ -81,7 +95,7 @@ public final class MavenProcessAdapter implements MavenPort {
         Path outputParent = absolutePath(outputFile).getParent();
         if (outputParent != null) fileSystem.createDirectories(outputParent);
         ProcessRequest request = new ProcessRequest(command, workingDirectory(command), Map.of(), configuration.timeout());
-        LOG.info("Executing Maven command: $ {}", request.displayCommand());
+        LOG.info("Executing Maven command: $ {}", safeDisplayCommand(request));
         ProcessResult result;
         try {
             result = processRunner.run(request);
@@ -89,20 +103,24 @@ public final class MavenProcessAdapter implements MavenPort {
             throw exception;
         } catch (RuntimeException exception) {
             throw new PortException(PortException.Kind.IO,
-                    "Unable to start Maven command: " + request.displayCommand(), exception);
+                    "Unable to start Maven command: " + safeDisplayCommand(request), exception);
         }
         if (result.timedOut()) {
             throw new PortException(PortException.Kind.TIMEOUT,
-                    "Maven command timed out: " + request.displayCommand());
+                    "Maven command timed out: " + safeDisplayCommand(request));
         }
         if (result.exitCode() != 0) {
             throw new PortException(PortException.Kind.PROCESS_FAILED,
-                    "Maven command failed exitCode=" + result.exitCode() + ": " + request.displayCommand());
+                    "Maven command failed exitCode=" + result.exitCode() + ": " + safeDisplayCommand(request));
         }
         return new MavenExecutionResult(result, outputFile);
     }
 
     private List<String> baseCommand(Path pomFile) {
+        return baseCommand(pomFile, true);
+    }
+
+    private List<String> baseCommand(Path pomFile, boolean nonRecursive) {
         Path absolutePom = absolutePath(pomFile);
         List<String> command = new ArrayList<>();
         if (configuration.windows()) {
@@ -110,7 +128,7 @@ public final class MavenProcessAdapter implements MavenPort {
             command.add("/c");
         }
         command.add(configuration.executable());
-        command.add("-N");
+        if (nonRecursive) command.add("-N");
         command.add("-f");
         command.add(absolutePom.toString());
         return command;
@@ -125,6 +143,10 @@ public final class MavenProcessAdapter implements MavenPort {
 
     private static String pluginGoal(String groupId, String artifactId, String version, String goal) {
         return groupId + ":" + artifactId + ":" + version + ":" + goal;
+    }
+
+    private static String safeDisplayCommand(ProcessRequest request) {
+        return request.displayCommand().replaceAll("(?i)(-DnvdApiKey=)[^\\s]+", "$1***");
     }
 
     private static String absolute(Path path) {

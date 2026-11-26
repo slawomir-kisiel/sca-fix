@@ -13,6 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pl.sca.fix.core.discovery.ProjectDiscoveryRequest;
@@ -22,6 +23,7 @@ import pl.sca.fix.core.discovery.MavenPomParser;
 import pl.sca.fix.core.git.GitProcessAdapter;
 import pl.sca.fix.core.maven.DependencyTreeFileWriter;
 import pl.sca.fix.core.maven.DependencyTreeTextWriter;
+import pl.sca.fix.core.maven.EffectivePom;
 import pl.sca.fix.core.maven.EffectivePomCache;
 import pl.sca.fix.core.maven.EffectivePomCacheRequest;
 import pl.sca.fix.core.maven.EffectivePomJsonCodec;
@@ -53,6 +55,7 @@ import pl.sca.fix.core.pipeline.PipelineStageResult;
 import pl.sca.fix.core.port.FileSystemPort;
 import pl.sca.fix.core.port.GitPort;
 import pl.sca.fix.core.port.MavenDependencyTreeRequest;
+import pl.sca.fix.core.port.MavenOwaspReportRequest;
 import pl.sca.fix.core.port.PortException;
 import pl.sca.fix.core.port.VersionLookupRequest.ProxySettings;
 import pl.sca.fix.core.port.ProcessRunnerPort;
@@ -96,8 +99,12 @@ final class CliRuntimeStageExecutor implements PipelineStageExecutor {
     private PlanDocument plan;
 
     CliRuntimeStageExecutor(CliConfiguration configuration) {
+        this(configuration, new SystemProcessRunner(configuration.verbose()));
+    }
+
+    CliRuntimeStageExecutor(CliConfiguration configuration, ProcessRunnerPort processes) {
         this.configuration = Objects.requireNonNull(configuration, "configuration must not be null");
-        ProcessRunnerPort processes = new SystemProcessRunner();
+        Objects.requireNonNull(processes, "processes must not be null");
         this.git = new GitProcessAdapter(processes);
         MavenToolConfiguration tools = MavenToolConfiguration.defaults(isWindows());
         this.maven = new MavenProcessAdapter(processes, files, tools);
@@ -159,7 +166,8 @@ final class CliRuntimeStageExecutor implements PipelineStageExecutor {
     }
 
     private PipelineStageResult importReport(WorkspaceState state) {
-        Path input = reportInput(state);
+        Path input = "owasp".equalsIgnoreCase(configuration.reportSource())
+                ? generateOwaspReport(state) : reportInput(state);
         if (!Files.isRegularFile(input)) return failure("REPORT_NOT_FOUND", "Report file not found: " + input);
         ReportDocument document = new ReportDocument(read(input), input, reportHint());
         ReportImportResult result = importer.importReport(document);
@@ -170,7 +178,7 @@ final class CliRuntimeStageExecutor implements PipelineStageExecutor {
             return new PipelineStageResult(List.of(output.toString()), issues(result.warnings(), "REPORT"),
                     result.errors().stream().map(message -> issue("REPORT_IMPORT_FAILED", message, "REPORT")).toList());
         }
-        return new PipelineStageResult(List.of(output.toString()),
+        return new PipelineStageResult(List.of(input.toString(), output.toString()),
                 issues(result.warnings(), "REPORT"), List.of());
     }
 
@@ -188,7 +196,22 @@ final class CliRuntimeStageExecutor implements PipelineStageExecutor {
     private PipelineStageResult overrideReview(WorkspaceState state) {
         ensurePlanningProjects(state);
         OverrideReviewService service = new OverrideReviewService(files, maven, workspace(state).resolve("override-review"));
-        OverrideReviewResult result = service.review(planningProjects, repository(), commitSha(), configuration.updateLevel());
+        Map<String, List<VersionCacheDocument.VersionEntry>> versions = new LinkedHashMap<>();
+        VersionCacheService cache = new VersionCacheService(files, new MavenMetadataClient(),
+                () -> Instant.now(Clock.systemUTC()), configuration.pomsRoot().resolveSibling("versions"),
+                Duration.ofMinutes(10), proxy());
+        VersionInfoTtl ttl = VersionInfoTtl.parse(configuration.versionInfoTtl());
+        List<MavenRepositorySpec> repositories = List.of(new MavenRepositorySpec("central", CENTRAL, true, true));
+        Set<String> reviewKeys = service.versionKeysForReview(planningProjects, projectTrees);
+        LOG.info("Preparing OverrideReview version cache projects={} candidateDirectDependencies={}",
+                planningProjects.size(), reviewKeys.size());
+        reviewKeys.forEach(key -> {
+                    String[] coordinates = key.split(":", 2);
+                    var result = cache.findVersions(coordinates[0], coordinates[1], repositories, ttl, Duration.ofSeconds(30));
+                    versions.put(key, result.versions());
+                });
+        OverrideReviewResult result = service.review(planningProjects, projectTrees, versions,
+                repository(), commitSha(), configuration.updateLevel());
         // Disabled strategies affect execution only. The generated plan must remain complete
         // so it can be reviewed and applied again with a different decision.
         plan = result.plan();
@@ -331,6 +354,39 @@ final class CliRuntimeStageExecutor implements PipelineStageExecutor {
     private Path reportInput(WorkspaceState state) {
         if (configuration.reportInput() != null) return Path.of(configuration.reportInput()).toAbsolutePath().normalize();
         return path(state, "report.json");
+    }
+
+    private Path generateOwaspReport(WorkspaceState state) {
+        ensureDiscovered();
+        Path pom = aggregatePom();
+        Path outputDirectory = workspace(state).resolve("reports").resolve("owasp");
+        files.createDirectories(outputDirectory);
+        LOG.info("Generating OWASP report source=owasp pom={} workspace={} outputDirectory={} pluginVersion={} format={}",
+                pom, workspace(state), outputDirectory, configuration.dependencyCheckVersion(), "json");
+        String apiKey = configuration.nvdApiKey();
+        if (apiKey == null || apiKey.isBlank()) {
+            apiKey = System.getenv("NVD_API_KEY");
+            if (apiKey == null || apiKey.isBlank()) {
+                LOG.warn("nvdApiKey was not supplied; NVD registry downloads may be slower or rate limited");
+                apiKey = null;
+            }
+        }
+        MavenOwaspReportRequest request = new MavenOwaspReportRequest(
+                pom, outputDirectory, configuration.dependencyCheckVersion(),
+                configuration.nvdApiServerId(), configuration.ossIndexServerId(), apiKey);
+        maven.generateOwaspReport(request);
+        LOG.info("OWASP report generated workspaceId={} output={} status=COMPLETED", state.workspaceId(), request.outputFile());
+        return request.outputFile();
+    }
+
+    private Path aggregatePom() {
+        Path repositoryPom = repository().resolve("pom.xml").normalize();
+        if (Files.isRegularFile(repositoryPom)) return repositoryPom;
+        return discovered.projects().stream()
+                .map(project -> repository().resolve(project.pomPath()).normalize())
+                .min(java.util.Comparator.comparingInt(path -> path.getNameCount()))
+                .orElseThrow(() -> new PortException(PortException.Kind.NOT_FOUND,
+                        "No Maven POM available for OWASP report generation"));
     }
 
     private String reportHint() {

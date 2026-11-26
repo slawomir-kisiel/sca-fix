@@ -30,16 +30,23 @@ public final class ScaFixPipeline {
     private final PipelineStageExecutor executor;
     private final GitPort git;
     private final Clock clock;
+    private final Consumer<RuntimeException> verboseErrorSink;
 
     public ScaFixPipeline(WorkspaceStorePort store, PipelineStageExecutor executor, GitPort git) {
-        this(store, executor, git, Clock.systemUTC());
+        this(store, executor, git, Clock.systemUTC(), ignored -> { });
     }
 
     public ScaFixPipeline(WorkspaceStorePort store, PipelineStageExecutor executor, GitPort git, Clock clock) {
+        this(store, executor, git, clock, ignored -> { });
+    }
+
+    public ScaFixPipeline(WorkspaceStorePort store, PipelineStageExecutor executor, GitPort git, Clock clock,
+                          Consumer<RuntimeException> verboseErrorSink) {
         this.store = Objects.requireNonNull(store, "store must not be null");
         this.executor = Objects.requireNonNull(executor, "executor must not be null");
         this.git = Objects.requireNonNull(git, "git must not be null");
         this.clock = Objects.requireNonNull(clock, "clock must not be null");
+        this.verboseErrorSink = Objects.requireNonNull(verboseErrorSink, "verboseErrorSink must not be null");
     }
 
     public WorkspaceState run(PipelineRequest request) {
@@ -116,6 +123,7 @@ public final class ScaFixPipeline {
             LOG.info("Finished pipeline stage workspaceId={} stage={} status=COMPLETED", state.workspaceId(), stage);
             return completed;
         } catch (RuntimeException exception) {
+            verboseErrorSink.accept(exception);
             PipelineStageResult result = PipelineStageResult.failed("PIPELINE_STAGE_FAILED", safeMessage(exception));
             return failed(running, stage, result, started);
         }

@@ -6,4 +6,9 @@ public interface MavenPort {
     MavenExecutionResult generateEffectivePom(MavenEffectivePomRequest request) throws PortException;
 
     MavenExecutionResult generateDependencyTree(MavenDependencyTreeRequest request) throws PortException;
+
+    default MavenExecutionResult generateOwaspReport(MavenOwaspReportRequest request) throws PortException {
+        throw new PortException(PortException.Kind.UNSUPPORTED,
+                "OWASP Dependency-Check report generation is not supported");
+    }
 }

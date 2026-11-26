@@ -34,7 +34,12 @@ public record CliConfiguration(
         boolean apply,
         List<String> disabledStrategies,
         List<String> skipLibraries,
-        UpdateLevel cveOverrideUpdateLevel) {
+        UpdateLevel cveOverrideUpdateLevel,
+        String nvdApiKey,
+        String nvdApiServerId,
+        String ossIndexServerId,
+        String dependencyCheckVersion,
+        String reportFormat) {
     public CliConfiguration(CliCommand command, ScanMode scanMode, String workspaceId, String repository,
                             List<String> projects, String reportSource, String reportInput, String reportOutput,
                             String plan, UpdateLevel updateLevel, String ambiguousStrategy, String versionInfoTtl,
@@ -42,7 +47,8 @@ public record CliConfiguration(
                             String configFile, Path workspaceRoot, Path pomsRoot, boolean verbose) {
         this(command, scanMode, workspaceId, repository, projects, reportSource, reportInput, reportOutput, plan,
                 updateLevel, ambiguousStrategy, versionInfoTtl, ignoreLocalChanges, commit, pushBranch,
-                overrideReview, configFile, workspaceRoot, pomsRoot, verbose, null, null, null, null, false, List.of(), List.of(), UpdateLevel.PATCH);
+                overrideReview, configFile, workspaceRoot, pomsRoot, verbose, null, null, null, null, false, List.of(), List.of(), UpdateLevel.PATCH,
+                null, "nvd", "ossindex", "12.1.9", "json");
     }
 
     public CliConfiguration {
@@ -59,5 +65,9 @@ public record CliConfiguration(
         skipLibraries = skipLibraries == null ? List.of() : skipLibraries.stream()
                 .filter(value -> value != null && !value.isBlank()).map(String::trim).distinct().toList();
         cveOverrideUpdateLevel = cveOverrideUpdateLevel == null ? UpdateLevel.PATCH : cveOverrideUpdateLevel;
+        nvdApiServerId = nvdApiServerId == null || nvdApiServerId.isBlank() ? "nvd" : nvdApiServerId.trim();
+        ossIndexServerId = ossIndexServerId == null || ossIndexServerId.isBlank() ? "ossindex" : ossIndexServerId.trim();
+        dependencyCheckVersion = dependencyCheckVersion == null || dependencyCheckVersion.isBlank() ? "12.1.9" : dependencyCheckVersion.trim();
+        reportFormat = reportFormat == null || reportFormat.isBlank() ? "json" : reportFormat.trim();
     }
 }

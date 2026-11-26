@@ -29,6 +29,26 @@ class CliConfigurationParserTest {
     }
 
     @Test
+    void parsesOwaspReportOptionsAndUsesSafeDefaults() {
+        CliConfiguration result = parser.parse("scan", "--repository", "checkout", "--report-source", "owasp",
+                "--nvd-api-key", "secret", "--dependency-check-version", "12.1.9");
+
+        assertEquals("owasp", result.reportSource());
+        assertEquals("secret", result.nvdApiKey());
+        assertEquals("12.1.9", result.dependencyCheckVersion());
+        assertEquals("nvd", result.nvdApiServerId());
+        assertEquals("ossindex", result.ossIndexServerId());
+        assertEquals("json", result.reportFormat());
+    }
+
+    @Test
+    void rejectsRemovedGenerateReportSource() {
+        CliConfigException exception = assertThrows(CliConfigException.class,
+                () -> parser.parse("scan", "--repository", "checkout", "--report-source", "generate"));
+        assertEquals("INVALID_REPORT_SOURCE", exception.code());
+    }
+
+    @Test
     void appliesWorkspaceThenConfigThenCliPrecedence() throws Exception {
         Path root = temp.resolve("workspaces");
         Path workspace = root.resolve("ws-1");

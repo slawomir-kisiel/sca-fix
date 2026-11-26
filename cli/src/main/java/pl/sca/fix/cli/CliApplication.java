@@ -2,30 +2,27 @@ package pl.sca.fix.cli;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import java.time.Clock;
 import pl.sca.fix.core.pipeline.ScaFixPipeline;
 import pl.sca.fix.core.port.PortException;
 import pl.sca.fix.core.workspace.FileWorkspaceStore;
 import pl.sca.fix.core.workspace.WorkspaceStateJsonCodec;
 import pl.sca.fix.core.maven.NioFileSystemAdapter;
+import pl.sca.fix.core.maven.SystemProcessRunner;
 
-/**
- * Production entry point for the standalone executable CLI.
- */
+/** Production entry point for the standalone executable CLI. */
 public final class CliApplication {
-
     private static final Logger LOG = LoggerFactory.getLogger(CliApplication.class);
 
-    private CliApplication() {
-    }
+    private CliApplication() { }
 
     public static void main(String[] args) {
         int exitCode = run(args);
-        if (exitCode != 0) {
-            System.exit(exitCode);
-        }
+        if (exitCode != 0) System.exit(exitCode);
     }
 
     static int run(String[] args) {
+        boolean verbose = contains(args, "--verbose");
         try {
             if (args == null || args.length == 0 || contains(args, "--help") || contains(args, "-h")) {
                 try {
@@ -36,19 +33,20 @@ public final class CliApplication {
                 return 0;
             }
             if (contains(args, "--version")) {
-                System.out.println("sca-fix-cli 0.1.1-SNAPSHOT");
+                System.out.println("sca-fix-cli 0.1.0-SNAPSHOT");
                 return 0;
             }
             CliConfiguration configuration = new CliConfigurationParser().parse(args);
-            if (configuration == null) {
-                return 0;
-            }
+            if (configuration == null) return 0;
+            verbose = configuration.verbose();
+            SystemProcessRunner processes = new SystemProcessRunner(verbose);
             NioFileSystemAdapter files = new NioFileSystemAdapter();
             FileWorkspaceStore store = new FileWorkspaceStore(configuration.workspaceRoot(), files,
                     new WorkspaceStateJsonCodec());
-            CliRuntimeStageExecutor executor = new CliRuntimeStageExecutor(configuration);
+            CliRuntimeStageExecutor executor = new CliRuntimeStageExecutor(configuration, processes);
             ScaFixPipeline pipeline = new ScaFixPipeline(store, executor,
-                    new pl.sca.fix.core.git.GitProcessAdapter(new pl.sca.fix.core.maven.SystemProcessRunner()));
+                    new pl.sca.fix.core.git.GitProcessAdapter(processes), Clock.systemUTC(),
+                    verbose ? exception -> exception.printStackTrace(System.err) : exception -> { });
             CliPipelineRunner.CliRunResult result = new CliPipelineRunner(pipeline).run(configuration);
             return result.summary().exitCode();
         } catch (CliConfigException exception) {
@@ -57,20 +55,18 @@ public final class CliApplication {
         } catch (PortException exception) {
             LOG.error("CLI pipeline failed kind={} message={}", exception.kind(), exception.getMessage(), exception);
             System.err.println("Pipeline failed [" + exception.kind() + "]: " + exception.getMessage());
+            if (verbose) exception.printStackTrace(System.err);
             return 2;
         } catch (RuntimeException exception) {
             LOG.error("CLI pipeline failed message={}", exception.getMessage(), exception);
             System.err.println("Pipeline failed: " + safeMessage(exception));
+            if (verbose) exception.printStackTrace(System.err);
             return 2;
         }
     }
 
     private static boolean contains(String[] args, String expected) {
-        for (String arg : args) {
-            if (expected.equals(arg)) {
-                return true;
-            }
-        }
+        for (String arg : args) if (expected.equals(arg)) return true;
         return false;
     }
 

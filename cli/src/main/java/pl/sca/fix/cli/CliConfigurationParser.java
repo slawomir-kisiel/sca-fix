@@ -25,7 +25,8 @@ public final class CliConfigurationParser {
     private static final Set<String> KNOWN = Set.of("schemaVersion", "repository", "projects", "report-source", "report-input",
             "report-output", "plan", "update-level", "ambiguous-strategy", "version-info-ttl",
             "ignore-local-changes", "commit", "push", "override-review", "workspace-root", "poms-root",
-            "reportAvailable", "apply", "disable-strategy", "skip", "cve-override-update-level", "verbose", "proxy-host", "proxy-port", "proxy-username", "proxy-password");
+            "reportAvailable", "apply", "disable-strategy", "skip", "cve-override-update-level", "verbose", "proxy-host", "proxy-port", "proxy-username", "proxy-password",
+            "nvd-api-key", "nvd-api-server-id", "oss-index-server-id", "dependency-check-version", "report-format");
     private static final Map<String, String> CONFIG_ALIASES = Map.ofEntries(
             Map.entry("updateLevel", "update-level"), Map.entry("ambiguousStrategy", "ambiguous-strategy"),
             Map.entry("versionInfoTtl", "version-info-ttl"), Map.entry("ignoreLocalChanges", "ignore-local-changes"),
@@ -34,7 +35,10 @@ public final class CliConfigurationParser {
             Map.entry("proxyHost", "proxy-host"), Map.entry("proxyPort", "proxy-port"),
             Map.entry("proxyUsername", "proxy-username"), Map.entry("proxyPassword", "proxy-password"),
             Map.entry("disableStrategy", "disable-strategy"), Map.entry("disabledStrategies", "disable-strategy"),
-            Map.entry("skipLibraries", "skip"), Map.entry("cveOverrideUpdateLevel", "cve-override-update-level"));
+            Map.entry("skipLibraries", "skip"), Map.entry("cveOverrideUpdateLevel", "cve-override-update-level"),
+            Map.entry("nvdApiKey", "nvd-api-key"), Map.entry("nvdApiServerId", "nvd-api-server-id"),
+            Map.entry("ossIndexServerId", "oss-index-server-id"), Map.entry("dependencyCheckVersion", "dependency-check-version"),
+            Map.entry("reportFormat", "report-format"));
     private static final Set<String> BOOLEAN = Set.of("ignore-local-changes", "commit", "override-review", "apply");
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -115,7 +119,9 @@ public final class CliConfigurationParser {
                 Path.of(string(v, "workspace-root")), Path.of(string(v, "poms-root")), bool(v, "verbose"),
                 string(v, "proxy-host"), integer(v, "proxy-port"), string(v, "proxy-username"),
                 string(v, "proxy-password"), bool(v, "apply"), listOrEmpty(v.get("disable-strategy")), listOrEmpty(v.get("skip")),
-                enumValue(UpdateLevel.class, string(v, "cve-override-update-level"), "cve-override-update-level"));
+                enumValue(UpdateLevel.class, string(v, "cve-override-update-level"), "cve-override-update-level"),
+                string(v, "nvd-api-key"), string(v, "nvd-api-server-id"), string(v, "oss-index-server-id"),
+                string(v, "dependency-check-version"), string(v, "report-format"));
     }
 
     private void validate(CliCommand command, ScanMode mode, String workspaceId, boolean workspaceOptionSeen, Map<String, Object> v) {
@@ -148,7 +154,7 @@ public final class CliConfigurationParser {
         String source = string(v, "report-source");
         if (source == null) error("REPORT_REQUIRED", "report-source", "Scan requires a report source");
         if (source.equals("file") && string(v, "report-input") == null) error("REPORT_INPUT_REQUIRED", "report-input", "File report source requires report input");
-        if (!Set.of("file", "generate").contains(source)) error("INVALID_REPORT_SOURCE", "report-source", "Unsupported report source: " + source);
+        if (!Set.of("file", "owasp").contains(source)) error("INVALID_REPORT_SOURCE", "report-source", "Unsupported report source: " + source);
         if (hasPush(v) && !bool(v, "commit")) error("PUSH_REQUIRES_COMMIT", "push", "Push requires commit");
         if (hasPush(v) && bool(v, "ignore-local-changes")) error("PUSH_WITH_IGNORED_CHANGES", "push", "Push is blocked with ignore-local-changes");
     }

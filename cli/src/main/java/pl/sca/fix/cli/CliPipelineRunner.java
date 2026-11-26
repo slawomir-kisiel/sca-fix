@@ -80,6 +80,7 @@ public final class CliPipelineRunner {
             if (!rows.isEmpty()) output.accept(new PlanTableRenderer().render(rows));
         } catch (RuntimeException | java.io.IOException exception) {
             LOG.warn("Unable to render plan summary path={} message={}", plan, exception.getMessage());
+            if (configuration.verbose()) exception.printStackTrace(System.err);
         }
     }
 
